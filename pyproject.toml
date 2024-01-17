@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patch-vsr-net"
+authors = [{ name = "Marco Di Rienzo" }]
+version = "0.0.1"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "torchvision",
+    "lightning[pytorch-extra]",
+    "lpips",
+    'einops>=0.6',
+]
+
+[project.optional-dependencies]
+wandb = ["wandb"]
+render = ["opencv-python", "av"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
