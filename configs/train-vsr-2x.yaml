@@ -36,6 +36,7 @@ model:
       class_path: archs.patch_vsr_net.PatchVSRNet
       init_args:
         scale_factor: &UPSCALE_FACTOR 2
+        residual: true
     gen_lr: 5e-5
     losses:
       pixel_crit:
@@ -58,7 +59,7 @@ data:
   extension: png
   hr_path_filter: '1088'
   lr_path_filter: '1088'
-  patch_size: 96
+  patch_size: 64
   tempo_extent: 2
   train_pct: 0.8
   dataset_upscale_factor: *UPSCALE_FACTOR

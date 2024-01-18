@@ -59,7 +59,7 @@ class VSRSingle(L.LightningModule):
         #     gt_data = torch.cat([gt_data, gt_rev], dim=1)
 
         # ------------ forward G ------------ #
-        hr_fake = self.G(lr_data)
+        hr_fake, _ = self.G(lr_data)
 
         # ------------ optimize G ------------ #
         to_log, to_log_prog = {}, {}
@@ -92,12 +92,14 @@ class VSRSingle(L.LightningModule):
         self.log_dict(to_log_prog, prog_bar=True)
         self.log_dict(to_log, prog_bar=False)
 
+        return loss_G
+
     def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:
         gt_data, lr_data = batch
         _, t, c, lr_h, lr_w = lr_data.size()
         _, _, _, gt_h, gt_w = gt_data.size()
 
-        hr_fake = self.G(lr_data)
+        hr_fake, aligned_patch = self.G(lr_data)
 
         ssim_val = self.ssim(hr_fake, gt_data[:, t // 2]).mean()
         lpips_val = self.lpips_alex(hr_fake, gt_data[:, t // 2]).mean()
@@ -111,4 +113,4 @@ class VSRSingle(L.LightningModule):
             prog_bar=True,
         )
 
-        return lr_data[:, t // 2], gt_data[:, t // 2], hr_fake
+        return (lr_data[:, t // 2], aligned_patch), (gt_data[:, t // 2], hr_fake)

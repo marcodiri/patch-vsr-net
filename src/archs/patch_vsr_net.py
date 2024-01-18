@@ -7,11 +7,11 @@ from archs.sr_net import SRNet
 
 
 class PatchVSRNet(BaseGenerator):
-    def __init__(self, in_channels=3, scale_factor=4, residual=True):
+    def __init__(self, in_channels=3, scale_factor=4, residual=True, **kwargs):
         super().__init__()
         self.save_hyperparameters()
 
-        self.align_net = AlignNet(in_channels=in_channels, top_k=5)
+        self.align_net = AlignNet(in_channels=in_channels, top_k=5, **kwargs)
         self.sr_net = SRNet(
             in_channels=in_channels * 2, scale_factor=scale_factor, residual=False
         )
@@ -21,9 +21,8 @@ class PatchVSRNet(BaseGenerator):
         current_idx = t // 2
         frame_t = lr_data[:, current_idx]
 
-        out = lr_data
-        out = self.align_net(out, lr_h // 2, lr_h // 16)
-        out = torch.cat([out, frame_t], dim=1)
+        aligned_patch = self.align_net(lr_data, lr_h // 2, lr_h // 16)
+        out = torch.cat([aligned_patch, frame_t], dim=1)
         out = self.sr_net(out)
 
         if self.hparams.residual:
@@ -33,7 +32,7 @@ class PatchVSRNet(BaseGenerator):
 
         out = F.tanh(out)
 
-        return out
+        return out, aligned_patch
 
 
 if __name__ == "__main__":

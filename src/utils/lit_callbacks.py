@@ -22,24 +22,23 @@ class ImageLog(Callback):
                     key="samples",
                     images=[
                         make_grid(
-                            outputs[0],
-                            nrow=outputs[1].shape[0],
+                            torch.cat(outputs[0]),
+                            nrow=outputs[0][0].shape[0],
                             normalize=True,
                         ),
                         make_grid(
                             torch.cat(
                                 [
-                                    outputs[1],
-                                    outputs[2],
+                                    *outputs[1],
                                     F.interpolate(
-                                        outputs[0],
-                                        size=outputs[1].shape[-2:],
+                                        outputs[0][0],
+                                        size=outputs[1][0].shape[-2:],
                                         mode="bicubic",
                                         align_corners=True,
                                     ),
                                 ]
                             ),
-                            nrow=outputs[1].shape[0],
+                            nrow=outputs[1][0].shape[0],
                             normalize=True,
                             scale_each=True,
                         ),

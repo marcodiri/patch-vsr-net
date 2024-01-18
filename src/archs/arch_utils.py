@@ -95,7 +95,9 @@ class CrossAttention(nn.Module):
 
 
 if __name__ == "__main__":
-    cross = CrossAttention(3)
+    cross = CrossAttention(3).cuda(1)
 
-    out = cross(torch.rand((6, 4, 3, 6, 6)), torch.rand((6, 4, 3, 3, 6, 6)))
+    out = cross(
+        torch.rand((6, 4, 3, 48, 48)).cuda(1), torch.rand((6, 4, 5, 3, 48, 48)).cuda(1)
+    )
     print(out.shape)
