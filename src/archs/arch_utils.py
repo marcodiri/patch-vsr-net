@@ -63,7 +63,6 @@ class CrossAttention(nn.Module):
 
         q, k, v = (self.to_q(x1), *self.to_kv(x2).chunk(2, dim=1))
 
-        # one attn matrix for each of the m blocks relating to all the n similar blocks
         k, v = map(
             lambda t: rearrange(
                 t, "(b m n) (h d) x y -> (b m h) (n x y) d", m=m, n=n, h=self.heads
@@ -73,6 +72,9 @@ class CrossAttention(nn.Module):
         q = rearrange(q, "(b m) (h d) x y -> (b m h) (x y) d", m=m, h=self.heads)
 
         sim = torch.einsum("b i d, b j d -> b i j", q, k) * self.scale
+        # ((b m h) (x y) (n x y))
+        # one attn matrix for each of the m blocks and for each head
+        # relating pixels in a block m to all the pixels in the n similar blocks
 
         attn = sim.softmax(dim=-1)
 

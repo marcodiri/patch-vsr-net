@@ -25,14 +25,24 @@ class ResidualBlock(nn.Module):
 class SRNet(BaseGenerator):
     """Reconstruction & Upsampling network"""
 
-    def __init__(self, in_nc=3, out_nc=3, nf=64, nb=16, scale=4, residual=False):
+    def __init__(
+        self,
+        in_channels=3,
+        out_channels=3,
+        nf=64,
+        nb=16,
+        scale_factor=4,
+        residual=False,
+    ):
         super(SRNet, self).__init__()
 
         self.save_hyperparameters()
 
+        self.residual = residual
+
         # input conv.
         self.conv_in = nn.Sequential(
-            nn.Conv2d(in_nc, nf, 3, 1, 1, bias=True),
+            nn.Conv2d(in_channels, nf, 3, 1, 1, bias=True),
             nn.ReLU(inplace=True),
         )
 
@@ -48,12 +58,14 @@ class SRNet(BaseGenerator):
         )
 
         self.conv_up_cheap = nn.Sequential(
-            nn.PixelShuffle(scale),
+            nn.PixelShuffle(scale_factor),
             nn.ReLU(inplace=True),
         )
 
         # output conv.
-        self.conv_out = nn.Conv2d(nf // scale**2, out_nc, 3, 1, 1, bias=True)
+        self.conv_out = nn.Conv2d(
+            nf // scale_factor**2, out_channels, 3, 1, 1, bias=True
+        )
 
     def forward(self, lr_curr):
         """lr_curr: the current lr data in shape nchw"""
@@ -63,9 +75,9 @@ class SRNet(BaseGenerator):
         out = self.conv_up_cheap(out)
         out = self.conv_out(out)
 
-        if self.hparams.residual:
+        if self.residual:
             out += F.interpolate(
-                lr_curr, scale_factor=self.hparams.scale, mode="bicubic"
+                lr_curr, scale_factor=self.hparams.scale_factor, mode="bicubic"
             )
 
         out = F.tanh(out)
