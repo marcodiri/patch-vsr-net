@@ -2,6 +2,7 @@ from typing import Dict
 
 import lightning as L
 import torch
+import torch.nn.functional as F
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from lpips import LPIPS
 
@@ -24,6 +25,9 @@ class VSRSingle(L.LightningModule):
 
         # pixel criterion
         self.pix_crit, self.pix_w = define_criterion(losses.get("pixel_crit"))
+
+        # align criterion
+        self.algn_crit, self.algn_w = define_criterion(losses.get("align_crit"))
 
         # feature criterion
         self.feat_crit, self.feat_w = define_criterion(losses.get("feature_crit"))
@@ -58,11 +62,14 @@ class VSRSingle(L.LightningModule):
         #     lr_data = torch.cat([lr_data, lr_rev], dim=1)
         #     gt_data = torch.cat([gt_data, gt_rev], dim=1)
 
+        to_log, to_log_prog = {}, {}
+
         # ------------ forward G ------------ #
-        hr_fake, _ = self.G(lr_data)
+        hr_fake, align_res = self.G(lr_data)
+        if self.G.align_net.hparams.attn_residual:
+            to_log_prog["attn_coeff"] = self.G.align_net.cross_attn.gamma
 
         # ------------ optimize G ------------ #
-        to_log, to_log_prog = {}, {}
 
         # calculate losses
         loss_G = 0
@@ -72,6 +79,19 @@ class VSRSingle(L.LightningModule):
             loss_pix_G = self.pix_crit(hr_fake, gt_data[:, t // 2])
             loss_G += self.pix_w * loss_pix_G
             to_log["G_pixel_loss"] = loss_pix_G
+
+        # align loss
+        if self.algn_crit is not None:
+            loss_algn_G = self.algn_crit(
+                align_res["aligned_patch"],
+                F.interpolate(
+                    gt_data[:, t // 2],
+                    scale_factor=1 / self.G.hparams.scale_factor,
+                    mode="bicubic",
+                ),
+            )
+            loss_G += self.algn_w * loss_algn_G
+            to_log["G_align_loss"] = loss_algn_G
 
         # feature (feat) loss
         if self.feat_crit is not None:
@@ -99,7 +119,7 @@ class VSRSingle(L.LightningModule):
         _, t, c, lr_h, lr_w = lr_data.size()
         _, _, _, gt_h, gt_w = gt_data.size()
 
-        hr_fake, aligned_patch = self.G(lr_data)
+        hr_fake, align_res = self.G(lr_data)
 
         ssim_val = self.ssim(hr_fake, gt_data[:, t // 2]).mean()
         lpips_val = self.lpips_alex(hr_fake, gt_data[:, t // 2]).mean()
@@ -113,4 +133,12 @@ class VSRSingle(L.LightningModule):
             prog_bar=True,
         )
 
-        return (lr_data[:, t // 2], aligned_patch), (gt_data[:, t // 2], hr_fake)
+        return (
+            lr_data[:, t // 2],
+            align_res["aligned_patch"],
+            F.interpolate(
+                gt_data[:, t // 2],
+                scale_factor=1 / self.G.hparams.scale_factor,
+                mode="bicubic",
+            ),
+        ), (gt_data[:, t // 2], hr_fake)

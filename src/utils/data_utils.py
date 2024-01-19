@@ -83,7 +83,7 @@ def tensor_to_blocks(input_tensor, kernel_size, stride=1):
         kernel_size,
     )
 
-    return unfolded
+    return unfolded.contiguous()
 
 
 def blocks_to_tensor(
@@ -131,7 +131,8 @@ def blocks_to_tensor(
             stride=stride,
         )
         folded /= norm_map
-    return folded
+
+    return folded.contiguous()
 
 
 def similarity_matrix(tensor1, tensor2):

@@ -1,7 +1,7 @@
 import lightning as L
 import torch
 import torch.nn as nn
-from einops import rearrange
+from einops import rearrange, repeat
 
 
 class BaseGenerator(L.LightningModule):
@@ -13,33 +13,37 @@ class BaseDiscriminator(L.LightningModule):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, in_channels, dim_head=32, heads=8):
+    def __init__(self, in_channels, dim_head=32, heads=8, residual=False):
         super().__init__()
 
         self.in_channels = in_channels
         self.heads = heads
+        self.residual = residual
         self.scale = dim_head**-0.5
         dim_inner = dim_head * heads
         kv_in_channels = in_channels
 
         self.to_q = nn.Conv2d(in_channels, dim_inner, 1, bias=False)
-        self.to_kv = nn.Conv2d(kv_in_channels, dim_inner * 2, 1, bias=False)
+        self.to_k = nn.Conv2d(kv_in_channels, dim_inner, 1, bias=False)
+        self.to_v = nn.Conv2d(kv_in_channels, dim_inner, 1, bias=False)
         self.to_out = nn.Conv2d(dim_inner, in_channels, 1, bias=False)
+        self.gamma = nn.Parameter(torch.zeros(1))
 
-    def forward(self, x1, x2):
+    def forward(self, structure_image, appearance_images):
         """
         Forward pass of the CrossAttention module.
 
         Args:
-        - x1 (torch.Tensor): Input tensor of shape (batch, m, in_channels, height, width)
+        - structure_image (torch.Tensor): Input tensor of shape (batch, m, in_channels, height, width)
             representing a set of m source images.
-        - x2 (torch.Tensor): Input tensor of shape (batch, n, in_channels, height, width)
+        - appearance_images (torch.Tensor): Input tensor of shape (batch, n, in_channels, height, width)
             representing a set of n target images related to the m source images.
 
         Returns:
         - torch.Tensor: Output tensor of shape (batch, m, in_channels, height, width)
             after applying cross-attention.
-
+        """
+        """
         Einstein Notation:
             b - batch
             m - number of source images
@@ -51,17 +55,19 @@ class CrossAttention(nn.Module):
             i - source image (attend from)
             j - target image (attend to)
         """
-        assert x1.shape[:2] == x2.shape[:2]
+        assert structure_image.shape[:2] == appearance_images.shape[:2]
 
-        b, m, c, x1_h, x1_w = x1.shape
-        b, m, n, c, x2_h, x2_w = x2.shape
+        b, m, c, x1_h, x1_w = structure_image.shape
+        b, m, n, c, x2_h, x2_w = appearance_images.shape
 
-        # x1 = x1.view(-1, c, x1_h, x1_w)
-        # x2 = x2.view(-1, c, x2_h, x2_w)
-        x1 = rearrange(x1, "b m c x y -> (b m) c x y")
-        x2 = rearrange(x2, "b m n c x y -> (b m n) c x y")
+        structure_image = structure_image.view(-1, c, x1_h, x1_w)
+        appearance_images = appearance_images.view(-1, c, x2_h, x2_w)
 
-        q, k, v = (self.to_q(x1), *self.to_kv(x2).chunk(2, dim=1))
+        q, k, v = (
+            self.to_q(structure_image),
+            self.to_k(appearance_images),
+            self.to_v(appearance_images),
+        )
 
         k, v = map(
             lambda t: rearrange(
@@ -72,9 +78,6 @@ class CrossAttention(nn.Module):
         q = rearrange(q, "(b m) (h d) x y -> (b m h) (x y) d", m=m, h=self.heads)
 
         sim = torch.einsum("b i d, b j d -> b i j", q, k) * self.scale
-        # ((b m h) (x y) (n x y))
-        # one attn matrix for each of the m blocks and for each head
-        # relating pixels in a block m to all the pixels in the n similar blocks
 
         attn = sim.softmax(dim=-1)
 
@@ -89,13 +92,16 @@ class CrossAttention(nn.Module):
             y=x1_w,
         )
         out = self.to_out(out)
+        if self.residual:
+            out = self.gamma * out + structure_image
 
-        out = rearrange(out, "(b m) d x y -> b m d x y", m=m)
-        return out
+        out = rearrange(out, "(b m) d x y -> b m d x y", m=m).contiguous()
+
+        return out, attn
 
 
 if __name__ == "__main__":
-    cross = CrossAttention(3).cuda(1)
+    cross = CrossAttention(3, heads=2).cuda(1)
 
     out = cross(
         torch.rand((6, 4, 3, 48, 48)).cuda(1), torch.rand((6, 4, 5, 3, 48, 48)).cuda(1)

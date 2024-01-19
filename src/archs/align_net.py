@@ -6,11 +6,15 @@ from utils.data_utils import blocks_to_tensor, similarity_matrix, tensor_to_bloc
 
 
 class AlignNet(L.LightningModule):
-    def __init__(self, in_channels, top_k, **kwargs):
+    def __init__(self, in_channels, top_k, attn_residual=False, **kwargs):
         super().__init__()
         self.save_hyperparameters()
 
-        self.cross_attn = CrossAttention(in_channels=in_channels, **kwargs)
+        self.cross_attn = CrossAttention(
+            in_channels=in_channels,
+            residual=attn_residual,
+            **kwargs,
+        )
 
     def forward(self, lr_data, block_size, stride):
         n, t, c, lr_h, lr_w = lr_data.shape
@@ -36,10 +40,10 @@ class AlignNet(L.LightningModule):
         topk_blocks = blocks_tm1[torch.arange(n)[:, None, None], topk_idx]
         topk_blocks = topk_blocks.view(n, n_blocks_t, self.hparams.top_k, c, bh, bw)
 
-        recons_blocks = self.cross_attn(blocks_t, topk_blocks)
+        recons_blocks, attn_mat = self.cross_attn(blocks_t, topk_blocks)
 
         reassembled = blocks_to_tensor(
             recons_blocks, frame_t.shape, kernel_size_t, stride_t
         )
 
-        return reassembled
+        return {"aligned_patch": reassembled, "attn_mat": attn_mat}

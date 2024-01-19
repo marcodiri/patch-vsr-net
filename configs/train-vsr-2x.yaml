@@ -37,12 +37,17 @@ model:
       init_args:
         scale_factor: &UPSCALE_FACTOR 2
         residual: true
-    gen_lr: 5e-5
+        attn_residual: false
+    gen_lr: 5e-4
     losses:
       pixel_crit:
         type: CB
         weight: 1
         reduction: mean
+      # align_crit:
+      #   type: CB
+      #   weight: 1
+      #   reduction: mean
       # feature_crit:
       #   type: CosineSimilarity
       #   weight: 0.2
@@ -54,8 +59,8 @@ model:
       #   net: vgg
 
 data:
-  hr_path: /home/DATASETS/BVI_DVC/frames_HQ
-  lr_path: /home/DATASETS/BVI_DVC/frames/frames_CRF_22
+  hr_path: ds/frames_HQ
+  lr_path: ds/frames/frames_CRF_22
   extension: png
   hr_path_filter: '1088'
   lr_path_filter: '1088'

@@ -21,8 +21,8 @@ class PatchVSRNet(BaseGenerator):
         current_idx = t // 2
         frame_t = lr_data[:, current_idx]
 
-        aligned_patch = self.align_net(lr_data, lr_h // 2, lr_h // 16)
-        out = torch.cat([aligned_patch, frame_t], dim=1)
+        align_res = self.align_net(lr_data, lr_h // 2, lr_h // 16)
+        out = torch.cat([align_res["aligned_patch"], frame_t], dim=1)
         out = self.sr_net(out)
 
         if self.hparams.residual:
@@ -32,7 +32,7 @@ class PatchVSRNet(BaseGenerator):
 
         out = F.tanh(out)
 
-        return out, aligned_patch
+        return out, align_res
 
 
 if __name__ == "__main__":
