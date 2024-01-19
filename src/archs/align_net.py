@@ -1,7 +1,8 @@
 import lightning as L
 import torch
+from einops import rearrange
 
-from archs.arch_utils import CrossAttention
+from archs.arch_utils import CrossAttention, ResNet
 from utils.data_utils import blocks_to_tensor, similarity_matrix, tensor_to_blocks
 
 
@@ -16,8 +17,10 @@ class AlignNet(L.LightningModule):
             **kwargs,
         )
 
+        self.feat_net = ResNet()
+
     def forward(self, lr_data, block_size, stride):
-        n, t, c, lr_h, lr_w = lr_data.shape
+        b, t, c, lr_h, lr_w = lr_data.shape
         current_idx = t // 2
         frame_t = lr_data[:, current_idx]
         frame_tm1 = lr_data[:, current_idx - 1]
@@ -32,13 +35,22 @@ class AlignNet(L.LightningModule):
         blocks_tm1 = tensor_to_blocks(frame_tm1, kernel_size_tm1, stride_tm1)
         _, n_blocks_tm1, _, _, _ = blocks_tm1.shape
 
-        sim = similarity_matrix(blocks_t, blocks_tm1)
+        # extract block features
+        blocks_t_feat = self.feat_net(blocks_t.view(-1, c, bh, bw))[3]
+        blocks_tm1_feat = self.feat_net(blocks_tm1.view(-1, c, bh, bw))[3]
+        blocks_t_feat = rearrange(
+            blocks_t_feat, "(b n) c_f h_f w_f -> b n c_f h_f w_f", n=n_blocks_t
+        )
+        blocks_tm1_feat = rearrange(
+            blocks_tm1_feat, "(b n) c_f h_f w_f -> b n c_f h_f w_f", n=n_blocks_tm1
+        )
+
+        sim = similarity_matrix(blocks_t_feat, blocks_tm1_feat)
 
         # get top k for each block (row)
         _, topk_idx = torch.topk(sim, self.hparams.top_k)
 
-        topk_blocks = blocks_tm1[torch.arange(n)[:, None, None], topk_idx]
-        topk_blocks = topk_blocks.view(n, n_blocks_t, self.hparams.top_k, c, bh, bw)
+        topk_blocks = blocks_tm1[torch.arange(b)[:, None, None], topk_idx]
 
         recons_blocks, attn_mat = self.cross_attn(blocks_t, topk_blocks)
 
@@ -47,3 +59,10 @@ class AlignNet(L.LightningModule):
         )
 
         return {"aligned_patch": reassembled, "attn_mat": attn_mat}
+
+
+if __name__ == "__main__":
+    from torchsummary import summary
+
+    net = AlignNet(3, 5)
+    summary(net, (2, 3, 64, 64), 64 // 2, 64 // 16, device="cpu")

@@ -1,7 +1,10 @@
+from collections import namedtuple
+
 import lightning as L
 import torch
 import torch.nn as nn
-from einops import rearrange, repeat
+from einops import rearrange
+from torchvision import models as tv
 
 
 class BaseGenerator(L.LightningModule):
@@ -60,13 +63,13 @@ class CrossAttention(nn.Module):
         b, m, c, x1_h, x1_w = structure_image.shape
         b, m, n, c, x2_h, x2_w = appearance_images.shape
 
-        structure_image = structure_image.view(-1, c, x1_h, x1_w)
-        appearance_images = appearance_images.view(-1, c, x2_h, x2_w)
+        structure_image_v = structure_image.view(-1, c, x1_h, x1_w)
+        appearance_images_v = appearance_images.view(-1, c, x2_h, x2_w)
 
         q, k, v = (
-            self.to_q(structure_image),
-            self.to_k(appearance_images),
-            self.to_v(appearance_images),
+            self.to_q(structure_image_v),
+            self.to_k(appearance_images_v),
+            self.to_v(appearance_images_v),
         )
 
         k, v = map(
@@ -93,17 +96,66 @@ class CrossAttention(nn.Module):
         )
         out = self.to_out(out)
         if self.residual:
-            out = self.gamma * out + structure_image
+            out = self.gamma * out + structure_image_v
 
         out = rearrange(out, "(b m) d x y -> b m d x y", m=m).contiguous()
 
         return out, attn
 
 
+class ResNet(torch.nn.Module):
+    def __init__(self, requires_grad=False):
+        super(ResNet, self).__init__()
+        self.net = tv.resnet18(weights="DEFAULT")
+
+        self.conv1 = self.net.conv1
+        self.bn1 = self.net.bn1
+        self.relu = self.net.relu
+        self.maxpool = self.net.maxpool
+        self.layer1 = self.net.layer1
+        self.layer2 = self.net.layer2
+        self.layer3 = self.net.layer3
+        self.layer4 = self.net.layer4
+
+        if not requires_grad:
+            self.eval()
+            for param in self.parameters():
+                param.requires_grad = False
+
+    def forward(self, X):
+        h = self.conv1(X)
+        h = self.bn1(h)
+        h = self.relu(h)
+        h_relu1 = h
+        h = self.maxpool(h)
+        h = self.layer1(h)
+        h_conv2 = h
+        h = self.layer2(h)
+        h_conv3 = h
+        h = self.layer3(h)
+        h_conv4 = h
+        h = self.layer4(h)
+        h_conv5 = h
+
+        outputs = namedtuple("Outputs", ["relu1", "conv2", "conv3", "conv4", "conv5"])
+        out = outputs(h_relu1, h_conv2, h_conv3, h_conv4, h_conv5)
+
+        return out
+
+
 if __name__ == "__main__":
     cross = CrossAttention(3, heads=2).cuda(1)
 
-    out = cross(
+    out, attn_mat = cross(
         torch.rand((6, 4, 3, 48, 48)).cuda(1), torch.rand((6, 4, 5, 3, 48, 48)).cuda(1)
     )
     print(out.shape)
+    print(attn_mat.shape)
+
+    from torchsummary import summary
+
+    net = ResNet()
+    feats = net(torch.rand(2, 3, 48, 48))
+    print([feat.shape for feat in feats])
+    print(feats.conv4.shape)
+    print(feats.conv4.requires_grad)
