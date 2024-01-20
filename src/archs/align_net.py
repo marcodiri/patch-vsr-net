@@ -2,11 +2,11 @@ import lightning as L
 import torch
 from einops import rearrange
 
-from archs.arch_utils import CrossAttention, ResNet
+from archs.arch_utils import BaseGenerator, CrossAttention, ResNet
 from utils.data_utils import blocks_to_tensor, similarity_matrix, tensor_to_blocks
 
 
-class AlignNet(L.LightningModule):
+class AlignNet(BaseGenerator):
     def __init__(self, in_channels, top_k, attn_residual=False, **kwargs):
         super().__init__()
         self.save_hyperparameters()

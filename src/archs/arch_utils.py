@@ -28,8 +28,7 @@ class CrossAttention(nn.Module):
 
         self.to_q = nn.Conv2d(in_channels, dim_inner, 1, bias=False)
         self.to_k = nn.Conv2d(kv_in_channels, dim_inner, 1, bias=False)
-        self.to_v = nn.Conv2d(kv_in_channels, dim_inner, 1, bias=False)
-        self.to_out = nn.Conv2d(dim_inner, in_channels, 1, bias=False)
+        # self.to_out = nn.Conv2d(dim_inner, in_channels, 1, bias=False)
         self.gamma = nn.Parameter(torch.zeros(1))
 
     def forward(self, structure_image, appearance_images):
@@ -69,7 +68,7 @@ class CrossAttention(nn.Module):
         q, k, v = (
             self.to_q(structure_image_v),
             self.to_k(appearance_images_v),
-            self.to_v(appearance_images_v),
+            appearance_images_v,
         )
 
         k, v = map(
@@ -94,7 +93,6 @@ class CrossAttention(nn.Module):
             x=x1_h,
             y=x1_w,
         )
-        out = self.to_out(out)
         if self.residual:
             out = self.gamma * out + structure_image_v
 
