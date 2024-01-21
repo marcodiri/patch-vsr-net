@@ -52,9 +52,7 @@ class AlignModule(L.LightningModule):
         to_log, to_log_prog = {}, {}
 
         # ------------ forward G ------------ #
-        align_res = self.G(lr_data, lr_h // 2, lr_h // 16)
-        if self.G.hparams.attn_residual:
-            to_log_prog["attn_coeff"] = self.G.cross_attn.gamma
+        align_res = self.G(lr_data)
 
         # ------------ optimize G ------------ #
 
@@ -97,7 +95,7 @@ class AlignModule(L.LightningModule):
         _, t, c, lr_h, lr_w = lr_data.size()
         _, _, _, gt_h, gt_w = gt_data.size()
 
-        align_res = self.G(lr_data, lr_h // 2, lr_h // 16)
+        align_res = self.G(lr_data)
 
         pix_loss_val = self.pix_crit_val(
             align_res["aligned_patch"],
@@ -117,6 +115,7 @@ class AlignModule(L.LightningModule):
         )
 
         return (
+            lr_data[:, t // 2 - 1],
             lr_data[:, t // 2],
             align_res["aligned_patch"],
             F.interpolate(

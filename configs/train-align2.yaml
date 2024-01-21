@@ -1,0 +1,59 @@
+# $ python scripts/main.py fit -c configs/train.yaml --ckpt_path 'path'
+# lightning.pytorch==2.1.2
+seed_everything: 2894872274
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: 1
+  num_nodes: 1
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      save_dir: ./lightning_logs/
+      offline: false
+      project: patch-vsr-net
+      log_model: True
+      prefix: ''
+      group: 'alignx96@CRF22'
+  callbacks: ImageLog
+  fast_dev_run: false
+  max_epochs: 100
+  max_steps: -1
+  overfit_batches: 0.0
+  check_val_every_n_epoch: 1
+  accumulate_grad_batches: 1
+  inference_mode: true
+  use_distributed_sampler: true
+  detect_anomaly: false
+  barebones: false
+  sync_batchnorm: false
+  reload_dataloaders_every_n_epochs: 0
+
+model:
+  class_path: models.align_net_module.AlignModule
+  init_args:
+    generator:
+      class_path: archs.align_net.AlignNet2
+      init_args:
+        in_channels: 3
+        heads: 1
+        num_blocks: 16
+    upscale_factor: &UPSCALE_FACTOR 2
+    gen_lr: 5e-5
+    losses:
+      pixel_crit:
+        type: CB
+        weight: 1
+        reduction: mean
+
+data:
+  hr_path: ds/frames_HQ
+  lr_path: ds/frames/frames_CRF_22
+  extension: png
+  hr_path_filter: '1088'
+  lr_path_filter: '1088'
+  patch_size: 320
+  tempo_extent: 2
+  train_pct: 0.8
+  dataset_upscale_factor: *UPSCALE_FACTOR
+  batch_size: 6

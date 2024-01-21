@@ -1,8 +1,17 @@
 import lightning as L
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from einops import rearrange
 
-from archs.arch_utils import BaseGenerator, CrossAttention, ResNet
+from archs.arch_utils import (
+    BaseGenerator,
+    Conv3Block,
+    CrossAttention,
+    CrossAttention2,
+    ResNet,
+    ResnetBlock,
+)
 from utils.data_utils import blocks_to_tensor, similarity_matrix, tensor_to_blocks
 
 
@@ -61,8 +70,143 @@ class AlignNet(BaseGenerator):
         return {"aligned_patch": reassembled, "attn_mat": attn_mat}
 
 
+class InterframeAligner(nn.Module):
+    def __init__(self, in_channels, **kwargs):
+        super().__init__()
+
+        self.cross_attn = CrossAttention2(
+            in_channels=in_channels,
+            **kwargs,
+        )
+
+        self.feat_net = nn.Sequential(
+            *[
+                Conv3Block(in_channels, 32),
+                ResnetBlock(32, 64),
+                ResnetBlock(64, 64),
+                nn.Conv2d(64, 32, 1),
+            ]
+        )
+
+    def forward(self, frame_tm1, frame_t, kernel_size):
+        b, c, lr_h, lr_w = frame_t.shape
+
+        frame_t_feat = self.feat_net(frame_t)
+        frame_tm1_feat = self.feat_net(frame_tm1)
+
+        stride = kernel_size
+
+        blocks_tm1 = tensor_to_blocks(frame_tm1, kernel_size, stride)
+
+        blocks_t_feat = tensor_to_blocks(frame_t_feat, kernel_size, stride)
+        _, n_blocks_t, _, bh, bw = blocks_t_feat.shape
+
+        blocks_tm1_feat = tensor_to_blocks(frame_tm1_feat, kernel_size, stride)
+        _, n_blocks_tm1, _, _, _ = blocks_tm1_feat.shape
+
+        recons_blocks, attn_mat = self.cross_attn(
+            blocks_tm1, blocks_tm1_feat, blocks_t_feat
+        )
+
+        reassembled = blocks_to_tensor(
+            recons_blocks, frame_t.shape, kernel_size, stride
+        )
+
+        reassembled = F.tanh(reassembled)
+
+        return {"aligned_patch": reassembled, "attn_mat": attn_mat}
+
+
+class AlignNet2(BaseGenerator):
+    def __init__(self, in_channels, num_blocks, **kwargs):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.aligner1 = InterframeAligner(in_channels, **kwargs)
+        self.aligner2 = InterframeAligner(in_channels, **kwargs)
+        self.aligner3 = InterframeAligner(in_channels, **kwargs)
+
+        self.fusion = nn.Sequential(
+            *[
+                Conv3Block(in_channels * 4, 16),
+                Conv3Block(16, 32),
+                Conv3Block(32, 3),
+            ]
+        )
+
+    def forward(self, lr_data):
+        b, t, c, lr_h, lr_w = lr_data.shape
+
+        current_idx = t // 2
+        input_frames = lr_data[:, current_idx - 1 : current_idx + 1]
+
+        kernel_size = lr_h // self.hparams.num_blocks
+
+        aligned1 = self.aligner1(
+            input_frames[:, 0],
+            input_frames[:, 1],
+            kernel_size,
+        )["aligned_patch"]
+        assert aligned1.shape == (b, c, lr_h, lr_w)
+
+        input_frames = input_frames.view(-1, c, lr_h, lr_w)
+        input_frames2 = F.interpolate(
+            input_frames,
+            scale_factor=1 / 2,
+            mode="bicubic",
+        ).view(b, 2, c, lr_h // 2, lr_w // 2)
+        aligned2 = self.aligner2(
+            input_frames2[:, 0],
+            input_frames2[:, 1],
+            kernel_size,
+        )["aligned_patch"]
+        aligned2 = F.interpolate(
+            aligned2,
+            scale_factor=2,
+            mode="bicubic",
+        )
+        assert aligned2.shape == (b, c, lr_h, lr_w)
+
+        input_frames3 = F.interpolate(
+            input_frames,
+            scale_factor=1 / 4,
+            mode="bicubic",
+        ).view(b, 2, c, lr_h // 4, lr_w // 4)
+        aligned3 = self.aligner3(
+            input_frames3[:, 0],
+            input_frames3[:, 1],
+            kernel_size,
+        )["aligned_patch"]
+        aligned3 = F.interpolate(
+            aligned3,
+            scale_factor=4,
+            mode="bicubic",
+        )
+        assert aligned3.shape == (b, c, lr_h, lr_w)
+
+        aligned_all = torch.cat(
+            [aligned1, aligned2, aligned3, lr_data[:, current_idx]], dim=1
+        )
+
+        M = self.fusion(aligned_all)
+        M = M.softmax(dim=1)
+
+        aligned_all = (
+            aligned1 * M[:, 0][:, None]
+            + aligned2 * M[:, 1][:, None]
+            + aligned3 * M[:, 2][:, None]
+        )
+
+        aligned_all = F.tanh(aligned_all)
+
+        return {"aligned_patch": aligned_all}
+
+
 if __name__ == "__main__":
     from torchsummary import summary
 
-    net = AlignNet(3, 5)
-    summary(net, (2, 3, 64, 64), 64 // 2, 64 // 16, device="cpu")
+    # net = AlignNet(3, 5)
+    # summary(net, (2, 3, 64, 64), 64 // 2, 64 // 16, device="cpu")
+
+    net = AlignNet2(3, 16)
+    summary(net, (2, 3, 96, 96), device="cpu")
