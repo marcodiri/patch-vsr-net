@@ -53,7 +53,7 @@ data:
   hr_path_filter: '1088'
   lr_path_filter: '1088'
   patch_size: 320
-  tempo_extent: 2
+  tempo_extent: 3
   train_pct: 0.8
   dataset_upscale_factor: *UPSCALE_FACTOR
   batch_size: 6

@@ -125,12 +125,15 @@ class AlignNet2(BaseGenerator):
         self.aligner1 = InterframeAligner(in_channels, **kwargs)
         self.aligner2 = InterframeAligner(in_channels, **kwargs)
         self.aligner3 = InterframeAligner(in_channels, **kwargs)
+        self.aligner4 = InterframeAligner(in_channels, **kwargs)
+        self.aligner5 = InterframeAligner(in_channels, **kwargs)
+        self.aligner6 = InterframeAligner(in_channels, **kwargs)
 
         self.fusion = nn.Sequential(
             *[
-                Conv3Block(in_channels * 4, 16),
-                Conv3Block(16, 32),
-                Conv3Block(32, 3),
+                Conv3Block(in_channels * 7, 32),
+                Conv3Block(32, 32),
+                Conv3Block(32, 6),
             ]
         )
 
@@ -138,10 +141,12 @@ class AlignNet2(BaseGenerator):
         b, t, c, lr_h, lr_w = lr_data.shape
 
         current_idx = t // 2
-        input_frames = lr_data[:, current_idx - 1 : current_idx + 1]
+        input_frames = lr_data[:, current_idx - 1 : current_idx + 2]
+        _, n, _, _, _ = input_frames.shape
 
         kernel_size = lr_h // self.hparams.num_blocks
 
+        # frame t-1
         aligned1 = self.aligner1(
             input_frames[:, 0],
             input_frames[:, 1],
@@ -149,12 +154,11 @@ class AlignNet2(BaseGenerator):
         )["aligned_patch"]
         assert aligned1.shape == (b, c, lr_h, lr_w)
 
-        input_frames = input_frames.view(-1, c, lr_h, lr_w)
         input_frames2 = F.interpolate(
-            input_frames,
+            input_frames.view(-1, c, lr_h, lr_w),
             scale_factor=1 / 2,
             mode="bicubic",
-        ).view(b, 2, c, lr_h // 2, lr_w // 2)
+        ).view(b, n, c, lr_h // 2, lr_w // 2)
         aligned2 = self.aligner2(
             input_frames2[:, 0],
             input_frames2[:, 1],
@@ -168,10 +172,10 @@ class AlignNet2(BaseGenerator):
         assert aligned2.shape == (b, c, lr_h, lr_w)
 
         input_frames3 = F.interpolate(
-            input_frames,
+            input_frames.view(-1, c, lr_h, lr_w),
             scale_factor=1 / 4,
             mode="bicubic",
-        ).view(b, 2, c, lr_h // 4, lr_w // 4)
+        ).view(b, n, c, lr_h // 4, lr_w // 4)
         aligned3 = self.aligner3(
             input_frames3[:, 0],
             input_frames3[:, 1],
@@ -184,8 +188,49 @@ class AlignNet2(BaseGenerator):
         )
         assert aligned3.shape == (b, c, lr_h, lr_w)
 
+        # frame t+1
+        aligned4 = self.aligner4(
+            input_frames[:, 2],
+            input_frames[:, 1],
+            kernel_size,
+        )["aligned_patch"]
+        assert aligned4.shape == (b, c, lr_h, lr_w)
+
+        aligned5 = self.aligner5(
+            input_frames2[:, 2],
+            input_frames2[:, 1],
+            kernel_size,
+        )["aligned_patch"]
+        aligned5 = F.interpolate(
+            aligned5,
+            scale_factor=2,
+            mode="bicubic",
+        )
+        assert aligned5.shape == (b, c, lr_h, lr_w)
+
+        aligned6 = self.aligner6(
+            input_frames3[:, 2],
+            input_frames3[:, 1],
+            kernel_size,
+        )["aligned_patch"]
+        aligned6 = F.interpolate(
+            aligned6,
+            scale_factor=4,
+            mode="bicubic",
+        )
+        assert aligned6.shape == (b, c, lr_h, lr_w)
+
         aligned_all = torch.cat(
-            [aligned1, aligned2, aligned3, lr_data[:, current_idx]], dim=1
+            [
+                aligned1,
+                aligned2,
+                aligned3,
+                aligned4,
+                aligned5,
+                aligned6,
+                lr_data[:, current_idx],
+            ],
+            dim=1,
         )
 
         M = self.fusion(aligned_all)
@@ -195,6 +240,9 @@ class AlignNet2(BaseGenerator):
             aligned1 * M[:, 0][:, None]
             + aligned2 * M[:, 1][:, None]
             + aligned3 * M[:, 2][:, None]
+            + aligned4 * M[:, 3][:, None]
+            + aligned5 * M[:, 4][:, None]
+            + aligned6 * M[:, 5][:, None]
         )
 
         aligned_all = F.tanh(aligned_all)
@@ -209,4 +257,4 @@ if __name__ == "__main__":
     # summary(net, (2, 3, 64, 64), 64 // 2, 64 // 16, device="cpu")
 
     net = AlignNet2(3, 16)
-    summary(net, (2, 3, 96, 96), device="cpu")
+    summary(net, (3, 3, 96, 96), device="cpu")

@@ -145,8 +145,8 @@ class CrossAttention2(nn.Module):
         b, m, cb, x2_h, x2_w = target_feat_blocks.shape
 
         q, k, v = (
-            reference_feat_blocks.view(-1, cb, x1_h, x1_w),
             target_feat_blocks.view(-1, cb, x2_h, x2_w),
+            reference_feat_blocks.view(-1, cb, x1_h, x1_w),
             reference_blocks.view(-1, c, x_h, x_w),
         )
 
