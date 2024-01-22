@@ -71,21 +71,22 @@ class AlignNet(BaseGenerator):
 
 
 class InterframeAligner(nn.Module):
-    def __init__(self, in_channels, **kwargs):
+    def __init__(self, in_channels, dim_feat_out=32, **kwargs):
         super().__init__()
-
-        self.cross_attn = CrossAttention2(
-            in_channels=in_channels,
-            **kwargs,
-        )
 
         self.feat_net = nn.Sequential(
             *[
                 Conv3Block(in_channels, 32),
                 ResnetBlock(32, 64),
                 ResnetBlock(64, 64),
-                nn.Conv2d(64, 32, 1),
+                nn.Conv2d(64, dim_feat_out, 1),
             ]
+        )
+
+        self.cross_attn = CrossAttention2(
+            in_channels=in_channels,
+            dim_feat=dim_feat_out,
+            **kwargs,
         )
 
     def forward(self, frame_tm1, frame_t, kernel_size):
@@ -122,6 +123,8 @@ class AlignNet2(BaseGenerator):
         super().__init__()
         self.save_hyperparameters()
 
+        self.aligners = 6
+
         self.aligner1 = InterframeAligner(in_channels, **kwargs)
         self.aligner2 = InterframeAligner(in_channels, **kwargs)
         self.aligner3 = InterframeAligner(in_channels, **kwargs)
@@ -131,9 +134,9 @@ class AlignNet2(BaseGenerator):
 
         self.fusion = nn.Sequential(
             *[
-                Conv3Block(in_channels * 7, 32),
+                Conv3Block(in_channels * (self.aligners + 1), 32),
                 Conv3Block(32, 32),
-                Conv3Block(32, 6),
+                Conv3Block(32, self.aligners),
             ]
         )
 

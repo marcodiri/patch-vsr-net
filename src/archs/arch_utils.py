@@ -103,41 +103,35 @@ class CrossAttention(nn.Module):
 
 
 class CrossAttention2(nn.Module):
-    def __init__(self, in_channels, dim_head=32, heads=1):
+    """
+    CrossAttention2 Module: Performs cross-attention between reference and target feature blocks.
+
+    Args:
+        dim_feat (int, optional): Dimension of the feature vectors. Defaults to 32.
+
+    Methods:
+        forward(reference_blocks, reference_feat_blocks, target_feat_blocks):
+            Performs cross-attention and computes the output feature blocks.
+
+    Input:
+        - reference_blocks (torch.Tensor): Input reference blocks with shape (batch, num_blocks, channels, height, width).
+        - reference_feat_blocks (torch.Tensor): Input reference feature blocks with shape (batch, num_blocks, feat_channels, feat_height, feat_width).
+        - target_feat_blocks (torch.Tensor): Input target feature blocks with shape (batch, num_blocks, feat_channels, feat_height, feat_width).
+
+    Output:
+        - out (torch.Tensor): Output feature blocks after cross-attention with shape (batch, num_blocks, channels, height, width).
+        - attn (torch.Tensor): Attention scores with shape (batch * num_blocks, feat_height * feat_width, feat_height * feat_width).
+
+    Note:
+        The attention mechanism is applied across feature vectors of reference and target blocks.
+    """
+
+    def __init__(self, dim_feat=32):
         super().__init__()
 
-        self.in_channels = in_channels
-        self.heads = heads
-        self.scale = dim_head**-0.5
-        dim_inner = dim_head * heads
-        kv_in_channels = in_channels
+        self.scale = dim_feat**-0.5
 
     def forward(self, reference_blocks, reference_feat_blocks, target_feat_blocks):
-        """
-        Forward pass of the CrossAttention module.
-
-        Args:
-        - structure_image (torch.Tensor): Input tensor of shape (batch, m, in_channels, height, width)
-            representing a set of m source images.
-        - appearance_images (torch.Tensor): Input tensor of shape (batch, n, in_channels, height, width)
-            representing a set of n target images related to the m source images.
-
-        Returns:
-        - torch.Tensor: Output tensor of shape (batch, m, in_channels, height, width)
-            after applying cross-attention.
-        """
-        """
-        Einstein Notation:
-            b - batch
-            m - number of source images
-            n - number of target images related to each source image
-            h - heads
-            x - height
-            y - width
-            d - dimension (in_channels)
-            i - source image (attend from)
-            j - target image (attend to)
-        """
         assert reference_feat_blocks.shape[:2] == target_feat_blocks.shape[:2]
 
         b, m, c, x_h, x_w = reference_blocks.shape

@@ -47,8 +47,8 @@ model:
         reduction: mean
 
 data:
-  hr_path: ds/frames_HQ
-  lr_path: ds/frames/frames_CRF_22
+  hr_path: /home/DATASETS/BVI_DVC/frames_HQ/
+  lr_path: /home/DATASETS/BVI_DVC/frames/frames_CRF_22
   extension: png
   hr_path_filter: '1088'
   lr_path_filter: '1088'
