@@ -48,14 +48,12 @@ class VSRSingle(L.LightningModule):
         n, t, c, lr_h, lr_w = lr_data.size()
         _, _, _, gt_h, gt_w = gt_data.size()
 
-        assert t > 1, "A temporal radius of at least 2 is needed"
+        assert t > 1, "A temporal radius of at least 3 is needed"
 
         to_log, to_log_prog = {}, {}
 
         # ------------ forward G ------------ #
         hr_fake, align_res = self.G(lr_data)
-        if self.G.align_net.hparams.attn_residual:
-            to_log_prog["attn_coeff"] = self.G.align_net.cross_attn.gamma
 
         # ------------ optimize G ------------ #
 

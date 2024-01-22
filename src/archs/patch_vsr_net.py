@@ -20,6 +20,7 @@ class PatchVSRNet(BaseGenerator):
         self.save_hyperparameters(ignore=["align_net"])
 
         self.align_net = align_net
+        # self.align_net = AlignNet2(3, 8)
         self.sr_net = SRNet(
             in_channels=in_channels * 2, scale_factor=scale_factor, residual=False
         )
@@ -29,8 +30,8 @@ class PatchVSRNet(BaseGenerator):
         current_idx = t // 2
         frame_t = lr_data[:, current_idx]
 
-        align_res = self.align_net(lr_data, lr_h // 2, lr_h // 16)
-        out = torch.cat([align_res["aligned_patch"], frame_t], dim=1)
+        align_res = self.align_net(lr_data)
+        out = torch.cat([frame_t, align_res["aligned_patch"]], dim=1)
         out = self.sr_net(out)
 
         if self.hparams.residual:
@@ -46,5 +47,5 @@ class PatchVSRNet(BaseGenerator):
 if __name__ == "__main__":
     from torchsummary import summary
 
-    net = PatchVSRNet()
-    summary(net, (2, 3, 96, 96), device="cpu")
+    net = PatchVSRNet(align_net=AlignNet2(3, 8))
+    summary(net, (3, 3, 96, 96), device="cpu")
