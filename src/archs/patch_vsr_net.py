@@ -1,17 +1,25 @@
 import torch
 import torch.nn.functional as F
 
-from archs.align_net import AlignNet
+from archs.align_net import AlignNet, AlignNet2
 from archs.arch_utils import BaseGenerator
 from archs.sr_net import SRNet
 
 
 class PatchVSRNet(BaseGenerator):
-    def __init__(self, in_channels=3, scale_factor=4, residual=True, **kwargs):
+    def __init__(
+        self,
+        in_channels=3,
+        scale_factor=4,
+        residual=True,
+        *,
+        align_net: BaseGenerator,
+        **kwargs,
+    ):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["align_net"])
 
-        self.align_net = AlignNet(in_channels=in_channels, top_k=5, **kwargs)
+        self.align_net = align_net
         self.sr_net = SRNet(
             in_channels=in_channels * 2, scale_factor=scale_factor, residual=False
         )

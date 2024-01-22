@@ -37,17 +37,21 @@ model:
       init_args:
         scale_factor: &UPSCALE_FACTOR 2
         residual: true
-        attn_residual: false
+        align_net:
+          class_path: archs.align_net.AlignNet2
+          init_args:
+            in_channels: 3
+            num_blocks: 16
     gen_lr: 5e-4
     losses:
       pixel_crit:
         type: CB
         weight: 1
         reduction: mean
-      # align_crit:
-      #   type: CB
-      #   weight: 1
-      #   reduction: mean
+      align_crit:
+        type: CB
+        weight: 1
+        reduction: mean
       # feature_crit:
       #   type: CosineSimilarity
       #   weight: 0.2

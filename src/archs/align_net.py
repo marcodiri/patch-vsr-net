@@ -83,11 +83,7 @@ class InterframeAligner(nn.Module):
             ]
         )
 
-        self.cross_attn = CrossAttention2(
-            in_channels=in_channels,
-            dim_feat=dim_feat_out,
-            **kwargs,
-        )
+        self.cross_attn = CrossAttention2(dim_feat=dim_feat_out)
 
     def forward(self, frame_tm1, frame_t, kernel_size):
         b, c, lr_h, lr_w = frame_t.shape

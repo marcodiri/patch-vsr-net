@@ -36,7 +36,6 @@ model:
       class_path: archs.align_net.AlignNet2
       init_args:
         in_channels: 3
-        heads: 1
         num_blocks: 16
     upscale_factor: &UPSCALE_FACTOR 2
     gen_lr: 5e-5
