@@ -25,6 +25,7 @@ class ImageLog(Callback):
                             torch.cat(outputs[0]),
                             nrow=outputs[0][0].shape[0],
                             normalize=True,
+                            scale_each=True,
                         ),
                         make_grid(
                             torch.cat(

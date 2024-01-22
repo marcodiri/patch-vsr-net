@@ -1,4 +1,5 @@
 from collections import namedtuple
+from typing import Iterable, List, Optional
 
 import lightning as L
 import torch
@@ -28,8 +29,7 @@ class CrossAttention(nn.Module):
 
         self.to_q = nn.Conv2d(in_channels, dim_inner, 1, bias=False)
         self.to_k = nn.Conv2d(kv_in_channels, dim_inner, 1, bias=False)
-        self.to_v = nn.Conv2d(kv_in_channels, dim_inner, 1, bias=False)
-        self.to_out = nn.Conv2d(dim_inner, in_channels, 1, bias=False)
+        # self.to_out = nn.Conv2d(dim_inner, in_channels, 1, bias=False)
         self.gamma = nn.Parameter(torch.zeros(1))
 
     def forward(self, structure_image, appearance_images):
@@ -69,7 +69,7 @@ class CrossAttention(nn.Module):
         q, k, v = (
             self.to_q(structure_image_v),
             self.to_k(appearance_images_v),
-            self.to_v(appearance_images_v),
+            appearance_images_v,
         )
 
         k, v = map(
@@ -94,13 +94,109 @@ class CrossAttention(nn.Module):
             x=x1_h,
             y=x1_w,
         )
-        out = self.to_out(out)
         if self.residual:
             out = self.gamma * out + structure_image_v
 
         out = rearrange(out, "(b m) d x y -> b m d x y", m=m).contiguous()
 
         return out, attn
+
+
+class CrossAttention2(nn.Module):
+    """
+    CrossAttention2 Module: Performs cross-attention between reference and target feature blocks.
+
+    Args:
+        dim_feat (int, optional): Dimension of the feature vectors. Defaults to 32.
+
+    Methods:
+        forward(reference_blocks, reference_feat_blocks, target_feat_blocks):
+            Performs cross-attention and computes the output feature blocks.
+
+    Input:
+        - reference_blocks (torch.Tensor): Input reference blocks with shape (batch, num_blocks, channels, height, width).
+        - reference_feat_blocks (torch.Tensor): Input reference feature blocks with shape (batch, num_blocks, feat_channels, feat_height, feat_width).
+        - target_feat_blocks (torch.Tensor): Input target feature blocks with shape (batch, num_blocks, feat_channels, feat_height, feat_width).
+
+    Output:
+        - out (torch.Tensor): Output feature blocks after cross-attention with shape (batch, num_blocks, channels, height, width).
+        - attn (torch.Tensor): Attention scores with shape (batch * num_blocks, feat_height * feat_width, feat_height * feat_width).
+
+    Note:
+        The attention mechanism is applied across feature vectors of reference and target blocks.
+    """
+
+    def __init__(self, dim_feat=32):
+        super().__init__()
+
+        self.scale = dim_feat**-0.5
+
+    def forward(self, reference_blocks, reference_feat_blocks, target_feat_blocks):
+        assert reference_feat_blocks.shape[:2] == target_feat_blocks.shape[:2]
+
+        b, m, c, x_h, x_w = reference_blocks.shape
+        b, m, cb, x1_h, x1_w = reference_feat_blocks.shape
+        b, m, cb, x2_h, x2_w = target_feat_blocks.shape
+
+        q, k, v = (
+            target_feat_blocks.view(-1, cb, x2_h, x2_w),
+            reference_feat_blocks.view(-1, cb, x1_h, x1_w),
+            reference_blocks.view(-1, c, x_h, x_w),
+        )
+
+        q, k, v = map(
+            lambda t: rearrange(t, "b c x y -> b (x y) c"),
+            (q, k, v),
+        )
+
+        sim = torch.einsum("b i d, b j d -> b i j", q, k) * self.scale
+
+        attn = sim.softmax(dim=-1)
+
+        out = torch.einsum("b i j, b j d -> b i d", attn, v)
+
+        out = rearrange(
+            out,
+            "(b m) (x y) d -> (b m) d x y",
+            m=m,
+            x=x_h,
+            y=x_w,
+        )
+
+        out = rearrange(out, "(b m) d x y -> b m d x y", m=m).contiguous()
+
+        return out, attn
+
+
+class Conv3Block(nn.Module):
+    def __init__(self, dim, dim_out):
+        super().__init__()
+        self.proj = nn.Conv2d(dim, dim_out, 3, 1, 1)
+        self.act = nn.SiLU()
+
+    def forward(self, x):
+        x = self.proj(x)
+        x = self.act(x)
+        return x
+
+
+class ResnetBlock(nn.Module):
+    def __init__(
+        self,
+        dim,
+        dim_out,
+    ):
+        super().__init__()
+
+        self.block1 = Conv3Block(dim, dim_out)
+        self.block2 = Conv3Block(dim_out, dim_out)
+        self.res_conv = nn.Conv2d(dim, dim_out, 1) if dim != dim_out else nn.Identity()
+
+    def forward(self, x):
+        h = self.block1(x)
+        h = self.block2(h)
+
+        return h + self.res_conv(x)
 
 
 class ResNet(torch.nn.Module):
@@ -144,10 +240,20 @@ class ResNet(torch.nn.Module):
 
 
 if __name__ == "__main__":
-    cross = CrossAttention(3, heads=2).cuda(1)
+    # cross = CrossAttention(3, heads=1).cuda(1)
+
+    # out, attn_mat = cross(
+    #     torch.rand((6, 4, 3, 48, 48)).cuda(1), torch.rand((6, 4, 5, 3, 48, 48)).cuda(1)
+    # )
+    # print(out.shape)
+    # print(attn_mat.shape)
+
+    cross = CrossAttention2(3, heads=1)
 
     out, attn_mat = cross(
-        torch.rand((6, 4, 3, 48, 48)).cuda(1), torch.rand((6, 4, 5, 3, 48, 48)).cuda(1)
+        torch.rand((6, 256, 3, 6, 6)),
+        torch.rand((6, 256, 32, 6, 6)),
+        torch.rand((6, 256, 32, 6, 6)),
     )
     print(out.shape)
     print(attn_mat.shape)
@@ -159,3 +265,6 @@ if __name__ == "__main__":
     print([feat.shape for feat in feats])
     print(feats.conv4.shape)
     print(feats.conv4.requires_grad)
+
+    resblock = ResnetBlock(3, 3)
+    summary(resblock, (3, 96, 96), device="cpu")
