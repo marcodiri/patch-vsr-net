@@ -45,7 +45,7 @@ args = parser.parse_args()
 generator = PatchVSRNet(
     scale_factor=args.scale,
     align_net=AlignNet2(3, 128),
-)  # .cuda()
+).cuda()
 
 checkpoint = torch.load(args.ckpt)
 state_dict = {
@@ -61,9 +61,9 @@ for p in lr_paths:
     lr = data_utils.load_img(p)
     lr = data_utils.transform(lr)
     lr_list.append(lr)
-lr_seq = torch.stack(lr_list).unsqueeze(0)  # .cuda()
+lr_seq = torch.stack(lr_list).unsqueeze(0).cuda()
 
-generator.eval()
+generator.freeze()  # important: disables grads so memory of computations gets freed
 hr_fake = generator.forward_sequence(lr_seq)[0].squeeze(0)
 
 if args.generate_bicubic:
