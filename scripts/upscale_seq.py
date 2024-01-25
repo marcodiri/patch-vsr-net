@@ -24,7 +24,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--generate_bicubic",
-    type=bool,
+    action=argparse.BooleanOptionalAction,
     default=False,
     help="Wether to alse generate a bicubic upscaled sequence (requires more memory). Default: False",
 )
@@ -33,6 +33,12 @@ parser.add_argument(
     "--scale",
     type=int,
     help="Upscale factor",
+)
+parser.add_argument(
+    "-o",
+    "--output_dir",
+    type=str,
+    help="Output directory",
 )
 parser.add_argument(
     "--ext",
@@ -63,24 +69,26 @@ for p in lr_paths:
     lr_list.append(lr)
 lr_seq = torch.stack(lr_list).unsqueeze(0).cuda()
 
-generator.freeze()  # important: disables grads so memory of computations gets freed
+generator.freeze()  # important: disables grads to free memory of intermediate computations
 hr_fake = generator.forward_sequence(lr_seq)[0].squeeze(0)
 
 if args.generate_bicubic:
-    hr_bic = F.interpolate(lr_seq, scale_factor=4, mode="bicubic")
-    hr_bic = torch.clamp(hr_bic, min=-1.0, max=1.0)
-    os.makedirs("./output/bic/", exist_ok=True)
+    os.makedirs(f"./{args.output_dir}/bic/", exist_ok=True)
 
 to_image = torchvision.transforms.ToPILImage()
 
 print("Saving upscaled sequence...")
-os.makedirs("./output/fake/", exist_ok=True)
+os.makedirs(f"./{args.output_dir}/fake/", exist_ok=True)
 
 frm_idx_lst = ["{:04d}.png".format(i + 1) for i in range(hr_fake.size(0))]
 for i in range(hr_fake.size(0)):
     hr_f = data_utils.de_transform(hr_fake[i])
-    hr_f.save(f"./output/fake/{frm_idx_lst[i]}")
+    hr_f.save(f"./{args.output_dir}/fake/{frm_idx_lst[i]}")
 
     if args.generate_bicubic:
-        hr_b = data_utils.de_transform(hr_bic[i])
-        hr_b.save(f"./output/bic/{frm_idx_lst[i]}")
+        hr_bic = F.interpolate(
+            lr_seq[:, i], scale_factor=args.scale, mode="bicubic"
+        ).squeeze(0)
+        hr_bic = torch.clamp(hr_bic, min=-1.0, max=1.0)
+        hr_bic = data_utils.de_transform(hr_bic)
+        hr_bic.save(f"./{args.output_dir}/bic/{frm_idx_lst[i]}")
