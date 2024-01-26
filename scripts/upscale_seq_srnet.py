@@ -5,8 +5,7 @@ import torch
 import torch.nn.functional as F
 import torchvision
 
-from archs.align_net import AlignNet2
-from archs.patch_vsr_net import PatchVSRNet
+from archs.sr_net import SRNet
 from utils import data_utils
 
 parser = argparse.ArgumentParser()
@@ -54,9 +53,9 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-generator = PatchVSRNet(
+generator = SRNet(
     scale_factor=args.scale,
-    align_net=AlignNet2(3, 128),
+    residual=True,
 ).cuda()
 
 checkpoint = torch.load(args.ckpt)
@@ -78,7 +77,11 @@ if args.downscale:
     lr_seq = F.interpolate(lr_seq, scale_factor=1 / args.scale, mode="bicubic")
 
 generator.freeze()  # important: disables grads to free memory of intermediate computations
-hr_fake = generator.forward_sequence(lr_seq.unsqueeze(0))[0].squeeze(0)
+hr_list = []
+for lr_t in lr_seq:
+    hr_fake_t = generator(lr_t.unsqueeze(0)).squeeze(0)
+    hr_list.append(hr_fake_t)
+hr_fake = torch.stack(hr_list)
 
 if args.save_bicubic:
     os.makedirs(f"./{args.output_dir}/bic/", exist_ok=True)

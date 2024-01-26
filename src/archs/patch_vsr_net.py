@@ -22,7 +22,9 @@ class PatchVSRNet(BaseGenerator):
         self.align_net = align_net
         # self.align_net = AlignNet2(3, 8)
         self.sr_net = SRNet(
-            in_channels=in_channels * 2, scale_factor=scale_factor, residual=False
+            in_channels=in_channels * 2,
+            scale_factor=scale_factor,
+            residual=False,
         )
 
     def forward(self, lr_data):
