@@ -11,7 +11,7 @@ from optim import define_criterion
 from optim.losses import SSIM
 
 
-class VSRGAN(L.LightningModule):
+class SISRGAN(L.LightningModule):
     def __init__(
         self,
         generator: BaseGenerator,
@@ -28,9 +28,6 @@ class VSRGAN(L.LightningModule):
 
         # pixel criterion
         self.pix_crit, self.pix_w = define_criterion(losses.get("pixel_crit"))
-
-        # align criterion
-        self.algn_crit, self.algn_w = define_criterion(losses.get("align_crit"))
 
         # feature criterion
         self.feat_crit, self.feat_w = define_criterion(losses.get("feature_crit"))
@@ -56,14 +53,8 @@ class VSRGAN(L.LightningModule):
         # ------------ prepare data ------------ #
         gt_data, lr_data = batch
 
-        n, t, c, lr_h, lr_w = lr_data.size()
-        _, _, _, gt_h, gt_w = gt_data.size()
-
-        current_idx = t // 2
-        gt_frame_t = gt_data[:, current_idx]
-        lr_frame_t = lr_data[:, current_idx]
-
-        assert t > 2, "A temporal radius of at least 3 is needed"
+        n, c, lr_h, lr_w = lr_data.size()
+        _, _, gt_h, gt_w = gt_data.size()
 
         to_log, to_log_prog = {}, {}
 
@@ -72,14 +63,14 @@ class VSRGAN(L.LightningModule):
         optim_D.zero_grad()
 
         # ------------ forward G ------------ #
-        hr_fake, align_res = self.G(lr_data)
+        hr_fake = self.G(lr_data)
 
         # ------------ forward D ------------ #
         for param in self.D.parameters():
             param.requires_grad = True
 
         # forward real sequence (gt)
-        real_pred = self.D(gt_frame_t)
+        real_pred = self.D(gt_data)
 
         # forward fake sequence (hr)
         fake_pred = self.D(hr_fake.detach())
@@ -108,26 +99,13 @@ class VSRGAN(L.LightningModule):
 
         # pixel (pix) loss
         if self.pix_crit is not None:
-            loss_pix_G = self.pix_crit(hr_fake, gt_data[:, t // 2])
+            loss_pix_G = self.pix_crit(hr_fake, gt_data)
             loss_G += self.pix_w * loss_pix_G
             to_log["G_pixel_loss"] = loss_pix_G
 
-        # align loss
-        if self.algn_crit is not None:
-            loss_algn_G = self.algn_crit(
-                align_res["aligned_patch"],
-                F.interpolate(
-                    gt_data[:, t // 2],
-                    scale_factor=1 / self.G.hparams.scale_factor,
-                    mode="bicubic",
-                ),
-            )
-            loss_G += self.algn_w * loss_algn_G
-            to_log["G_align_loss"] = loss_algn_G
-
         # feature (feat) loss
         if self.feat_crit is not None:
-            loss_feat_G = self.feat_crit(hr_fake, gt_data[:, t // 2].detach()).mean()
+            loss_feat_G = self.feat_crit(hr_fake, gt_data.detach()).mean()
 
             loss_G += self.feat_w * loss_feat_G
             to_log["G_lpip_loss"] = loss_feat_G
@@ -149,13 +127,13 @@ class VSRGAN(L.LightningModule):
 
     def validation_step(self, batch, batch_idx) -> STEP_OUTPUT:
         gt_data, lr_data = batch
-        _, t, c, lr_h, lr_w = lr_data.size()
-        _, _, _, gt_h, gt_w = gt_data.size()
+        _, c, lr_h, lr_w = lr_data.size()
+        _, _, gt_h, gt_w = gt_data.size()
 
-        hr_fake, align_res = self.G(lr_data)
+        hr_fake = self.G(lr_data)
 
-        ssim_val = self.ssim(hr_fake, gt_data[:, t // 2]).mean()
-        lpips_val = self.lpips_alex(hr_fake, gt_data[:, t // 2]).mean()
+        ssim_val = self.ssim(hr_fake, gt_data).mean()
+        lpips_val = self.lpips_alex(hr_fake, gt_data).mean()
 
         self.log_dict(
             {
@@ -167,23 +145,15 @@ class VSRGAN(L.LightningModule):
         )
 
         return (
+            (lr_data,),
             (
-                lr_data[:, t // 2],
-                align_res["aligned_patch"],
-                F.interpolate(
-                    gt_data[:, t // 2],
-                    size=lr_data.shape[-2:],
-                    mode="bicubic",
-                ),
-            ),
-            (
-                gt_data[:, t // 2],
+                gt_data,
                 hr_fake,
                 F.interpolate(
-                    lr_data[:, t // 2],
+                    lr_data,
                     size=gt_data.shape[-2:],
                     mode="bicubic",
                 ),
             ),
-            ("lq vs aligned vs hq downscaled", "hq vs fake vs bicubic"),
+            ("lq", "hq vs fake vs bicubic"),
         )
