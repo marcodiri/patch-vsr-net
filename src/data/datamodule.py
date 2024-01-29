@@ -51,7 +51,7 @@ class FolderDataModule(L.LightningDataModule):
         data_loader = DataLoader(
             dataset=self.train_set,
             batch_size=self.hparams.batch_size,
-            num_workers=40,
+            num_workers=20,
             shuffle=True,
             pin_memory=self.hparams.pin_memory,
         )
@@ -61,7 +61,7 @@ class FolderDataModule(L.LightningDataModule):
         data_loader_eval = DataLoader(
             dataset=self.valid_set,
             batch_size=self.hparams.batch_size,
-            num_workers=40,
+            num_workers=20,
             shuffle=False,
             pin_memory=self.hparams.pin_memory,
         )

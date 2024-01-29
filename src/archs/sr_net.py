@@ -79,5 +79,6 @@ class SRNet(BaseGenerator):
             out += F.interpolate(
                 lr_curr, scale_factor=self.hparams.scale_factor, mode="bicubic"
             )
+            out = F.tanh(out)
 
         return out

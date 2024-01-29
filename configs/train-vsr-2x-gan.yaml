@@ -30,7 +30,7 @@ trainer:
   reload_dataloaders_every_n_epochs: 0
 
 model:
-  class_path: models.vsr_single_module.VSRSingle
+  class_path: models.vsr_gan_module.VSRGAN
   init_args:
     generator:
       class_path: archs.patch_vsr_net.PatchVSRNet
@@ -42,6 +42,8 @@ model:
           init_args:
             in_channels: 3
             num_blocks: 16
+    discriminator:
+      class_path: archs.discriminator.spatial_discr.SpatialDiscriminator
     gen_lr: 5e-4
     losses:
       pixel_crit:
@@ -56,6 +58,10 @@ model:
         type: LPIPS
         weight: 0.2
         net: vgg
+      gan_crit:
+        type: GAN
+        weight: 0.01
+        reduction: mean
 
 data:
   hr_path: /home/DATASETS/BVI_DVC/frames_HQ/

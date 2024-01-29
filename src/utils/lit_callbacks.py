@@ -28,23 +28,13 @@ class ImageLog(Callback):
                             scale_each=True,
                         ),
                         make_grid(
-                            torch.cat(
-                                [
-                                    *outputs[1],
-                                    F.interpolate(
-                                        outputs[0][0],
-                                        size=outputs[1][0].shape[-2:],
-                                        mode="bicubic",
-                                        align_corners=True,
-                                    ),
-                                ]
-                            ),
+                            torch.cat(outputs[1]),
                             nrow=outputs[1][0].shape[0],
                             normalize=True,
                             scale_each=True,
                         ),
                     ],
-                    caption=["lq", "hq vs fake vs bicubic"],
+                    caption=outputs[2],
                 )
             except Exception as e:
                 print(e)
