@@ -16,50 +16,78 @@ from utils.data_utils import blocks_to_tensor, similarity_matrix, tensor_to_bloc
 
 
 class AlignNet(BaseGenerator):
-    def __init__(self, in_channels, top_k, attn_residual=False, **kwargs):
+    def __init__(
+        self,
+        in_channels,
+        *,
+        top_k,
+        block_size,
+        stride,
+        **kwargs,
+    ):
         super().__init__()
         self.save_hyperparameters()
 
         self.cross_attn = CrossAttention(
             in_channels=in_channels,
-            residual=attn_residual,
             **kwargs,
         )
 
-        self.feat_net = ResNet()
+        self.resnet = ResNet()
 
-    def forward(self, lr_data, block_size, stride):
+    def forward(self, lr_data):
         b, t, c, lr_h, lr_w = lr_data.shape
         current_idx = t // 2
         frame_t = lr_data[:, current_idx]
-        frame_tm1 = lr_data[:, current_idx - 1]
 
-        kernel_size_t = block_size
+        frame_t_mp = torch.cat(
+            [lr_data[:, :current_idx], lr_data[:, current_idx + 1 :]],
+            dim=1,
+        )
+
+        kernel_size_t = self.hparams.block_size
         stride_t = kernel_size_t
 
         blocks_t = tensor_to_blocks(frame_t, kernel_size_t, stride_t)
         _, n_blocks_t, _, bh, bw = blocks_t.shape
-
-        kernel_size_tm1, stride_tm1 = block_size, stride
-        blocks_tm1 = tensor_to_blocks(frame_tm1, kernel_size_tm1, stride_tm1)
-        _, n_blocks_tm1, _, _, _ = blocks_tm1.shape
-
         # extract block features
-        blocks_t_feat = self.feat_net(blocks_t.view(-1, c, bh, bw))[3]
-        blocks_tm1_feat = self.feat_net(blocks_tm1.view(-1, c, bh, bw))[3]
+        blocks_t_feat = self.resnet(blocks_t.view(-1, c, bh, bw))[2]
         blocks_t_feat = rearrange(
             blocks_t_feat, "(b n) c_f h_f w_f -> b n c_f h_f w_f", n=n_blocks_t
         )
-        blocks_tm1_feat = rearrange(
-            blocks_tm1_feat, "(b n) c_f h_f w_f -> b n c_f h_f w_f", n=n_blocks_tm1
+
+        kernel_size_t_mp, stride_t_mp = self.hparams.block_size, self.hparams.stride
+        blocks_t_mp = tensor_to_blocks(
+            frame_t_mp.view(-1, c, lr_h, lr_w), kernel_size_t_mp, stride_t_mp
+        )
+        _, n_blocks_ti, _, _, _ = blocks_t_mp.shape
+
+        blocks_t_mp_feat = self.resnet(blocks_t_mp.view(-1, c, bh, bw))[2]
+        blocks_t_mp_feat = rearrange(
+            blocks_t_mp_feat,
+            "(b t n) c_f h_f w_f -> b t n c_f h_f w_f",
+            t=t - 1,
+            n=n_blocks_ti,
+        )
+        blocks_t_mp = rearrange(
+            blocks_t_mp,
+            "(b t) n c_f h_f w_f -> b t n c_f h_f w_f",
+            t=t - 1,
+            n=n_blocks_ti,
         )
 
-        sim = similarity_matrix(blocks_t_feat, blocks_tm1_feat)
+        topk_blocks = []
+        for i in range(t - 1):
+            sim = similarity_matrix(blocks_t_feat, blocks_t_mp_feat[:, i])
 
-        # get top k for each block (row)
-        _, topk_idx = torch.topk(sim, self.hparams.top_k)
+            # get top k for each block (row)
+            _, topk_idx = torch.topk(sim, k=self.hparams.top_k, dim=-1)
 
-        topk_blocks = blocks_tm1[torch.arange(b)[:, None, None], topk_idx]
+            topk_blocks_i = blocks_t_mp[:, i][
+                torch.arange(b)[:, None, None], topk_idx
+            ]  # b m k c bh bw
+            topk_blocks.append(topk_blocks_i)
+        topk_blocks = torch.cat(topk_blocks, dim=2)
 
         recons_blocks, attn_mat = self.cross_attn(blocks_t, topk_blocks)
 
@@ -252,8 +280,9 @@ class AlignNet2(BaseGenerator):
 if __name__ == "__main__":
     from torchsummary import summary
 
-    # net = AlignNet(3, 5)
-    # summary(net, (2, 3, 64, 64), 64 // 2, 64 // 16, device="cpu")
+    tempo_extent = 7
+    net = AlignNet(3, top_k=tempo_extent - 1, block_size=24, stride=12)
+    summary(net, (tempo_extent, 3, 96, 96), device="cpu")
 
-    net = AlignNet2(3, 16)
-    summary(net, (3, 3, 96, 96), device="cpu")
+    # net = AlignNet2(3, 16)
+    # summary(net, (3, 3, 96, 96), device="cpu")

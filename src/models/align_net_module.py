@@ -32,8 +32,6 @@ class AlignModule(L.LightningModule):
 
         # validation losses
         self.pix_crit_val = CharbonnierLoss(reduction="mean")
-        self.lpips_alex = LPIPS(net="alex", version="0.1")
-        self.ssim = SSIM()
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         optim_G = torch.optim.Adam(params=self.G.parameters(), lr=self.hparams.gen_lr)
@@ -115,12 +113,16 @@ class AlignModule(L.LightningModule):
         )
 
         return (
-            lr_data[:, t // 2 - 1],
-            lr_data[:, t // 2],
-            align_res["aligned_patch"],
-            F.interpolate(
-                gt_data[:, t // 2],
-                scale_factor=1 / self.hparams.upscale_factor,
-                mode="bicubic",
+            (
+                lr_data[:, t // 2 - 1],
+                lr_data[:, t // 2],
+                align_res["aligned_patch"],
+                F.interpolate(
+                    gt_data[:, t // 2],
+                    scale_factor=1 / self.hparams.upscale_factor,
+                    mode="bicubic",
+                ),
             ),
-        ), (gt_data[:, t // 2],)
+            (gt_data[:, t // 2],),
+            ("lq_t-1 vs lq_t vs aligned vs hq downscaled", "hq_t"),
+        )
