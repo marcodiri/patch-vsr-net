@@ -17,6 +17,29 @@ class BaseDiscriminator(L.LightningModule):
 
 
 class CrossAttention(nn.Module):
+    """
+    CrossAttention module for performing cross-attention mechanism.
+
+    Args:
+        in_channels (int): Number of input channels for the feature network.
+        dim (int): Dimensionality of the output feature space (default is 32).
+
+    Methods:
+        forward(target_blocks, reference_blocks):
+            Perform forward pass through the cross-attention mechanism.
+
+            Args:
+                target_blocks (torch.Tensor): Tensor of shape (batch, m, in_channels, height, width)
+                representing a set of m source images.
+                reference_blocks (torch.Tensor): tensor of shape (batch, m, n, in_channels, height, width)
+                representing a set of n target images related to the m source images.
+
+            Returns:
+                Tuple[torch.Tensor, torch.Tensor]: Tuple containing the output tensor after cross-attention
+                with shape (batch, m, in_channels, height, width) and the attention weights tensor with
+                shape (batch, m, n).
+    """
+
     def __init__(self, in_channels, dim=32):
         super().__init__()
 
@@ -32,30 +55,6 @@ class CrossAttention(nn.Module):
         )
 
     def forward(self, target_blocks, reference_blocks):
-        """
-        Forward pass of the CrossAttention module.
-
-        Args:
-        - structure_image (torch.Tensor): Input tensor of shape (batch, m, in_channels, height, width)
-            representing a set of m source images.
-        - appearance_images (torch.Tensor): Input tensor of shape (batch, n, in_channels, height, width)
-            representing a set of n target images related to the m source images.
-
-        Returns:
-        - torch.Tensor: Output tensor of shape (batch, m, in_channels, height, width)
-            after applying cross-attention.
-        """
-        """
-        Einstein Notation:
-            b - batch
-            m - number of source images
-            n - number of target images related to each source image
-            x - height
-            y - width
-            d - dimension (in_channels)
-            i - source image (attend from)
-            j - target image (attend to)
-        """
         assert reference_blocks.shape[:2] == target_blocks.shape[:2]
 
         b, m, n, c, h, w = reference_blocks.shape
