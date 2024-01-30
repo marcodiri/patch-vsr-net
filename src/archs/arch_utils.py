@@ -17,22 +17,23 @@ class BaseDiscriminator(L.LightningModule):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, in_channels, dim_head=32, heads=8, residual=False):
+    def __init__(self, in_channels, dim=32):
         super().__init__()
 
         self.in_channels = in_channels
-        self.heads = heads
-        self.residual = residual
-        self.scale = dim_head**-0.5
-        dim_inner = dim_head * heads
+        self.scale = dim**-0.5
         kv_in_channels = in_channels
 
-        self.to_q = nn.Conv2d(in_channels, dim_inner, 1, bias=False)
-        self.to_k = nn.Conv2d(kv_in_channels, dim_inner, 1, bias=False)
-        # self.to_out = nn.Conv2d(dim_inner, in_channels, 1, bias=False)
-        self.gamma = nn.Parameter(torch.zeros(1))
+        self.feat_net = nn.Sequential(
+            *[
+                Conv3Block(in_channels, 32),
+                ResnetBlock(32, 64),
+                ResnetBlock(64, 64),
+                nn.Conv2d(64, dim, 1),
+            ]
+        )
 
-    def forward(self, structure_image, appearance_images):
+    def forward(self, target_blocks, reference_blocks):
         """
         Forward pass of the CrossAttention module.
 
@@ -51,34 +52,28 @@ class CrossAttention(nn.Module):
             b - batch
             m - number of source images
             n - number of target images related to each source image
-            h - heads
             x - height
             y - width
             d - dimension (in_channels)
             i - source image (attend from)
             j - target image (attend to)
         """
-        assert structure_image.shape[:2] == appearance_images.shape[:2]
+        assert reference_blocks.shape[:2] == target_blocks.shape[:2]
 
-        b, m, c, x1_h, x1_w = structure_image.shape
-        b, m, n, c, x2_h, x2_w = appearance_images.shape
-
-        structure_image_v = structure_image.view(-1, c, x1_h, x1_w)
-        appearance_images_v = appearance_images.view(-1, c, x2_h, x2_w)
+        b, m, n, c, h, w = reference_blocks.shape
+        b, m, _, _, _ = target_blocks.shape
 
         q, k, v = (
-            self.to_q(structure_image_v),
-            self.to_k(appearance_images_v),
-            appearance_images_v,
+            self.feat_net(target_blocks.view(-1, c, h, w)),
+            self.feat_net(reference_blocks.view(-1, c, h, w)),
+            reference_blocks.view(-1, c, h, w),
         )
 
         k, v = map(
-            lambda t: rearrange(
-                t, "(b m n) (h d) x y -> (b m h) (n x y) d", m=m, n=n, h=self.heads
-            ),
+            lambda t: rearrange(t, "(b m n) d x y -> (b m) (n x y) d", m=m, n=n),
             (k, v),
         )
-        q = rearrange(q, "(b m) (h d) x y -> (b m h) (x y) d", m=m, h=self.heads)
+        q = rearrange(q, "(b m) d x y -> (b m) (x y) d", m=m)
 
         sim = torch.einsum("b i d, b j d -> b i j", q, k) * self.scale
 
@@ -88,16 +83,11 @@ class CrossAttention(nn.Module):
 
         out = rearrange(
             out,
-            "(b m h) (x y) d -> (b m) (h d) x y",
+            "(b m) (x y) d -> b m d x y",
             m=m,
-            h=self.heads,
-            x=x1_h,
-            y=x1_w,
-        )
-        if self.residual:
-            out = self.gamma * out + structure_image_v
-
-        out = rearrange(out, "(b m) d x y -> b m d x y", m=m).contiguous()
+            x=h,
+            y=w,
+        ).contiguous()
 
         return out, attn
 
