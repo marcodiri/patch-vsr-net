@@ -36,7 +36,7 @@ model:
       class_path: archs.align_net.AlignNet
       init_args:
         in_channels: 3
-        top_k: 5
+        top_k: 1
         block_size: 12
         stride: 4
     upscale_factor: &UPSCALE_FACTOR 2
@@ -54,7 +54,7 @@ data:
   hr_path_filter: '1088'
   lr_path_filter: '1088'
   patch_size: 96
-  tempo_extent: 3
+  tempo_extent: 7
   train_pct: 0.8
   dataset_upscale_factor: *UPSCALE_FACTOR
   batch_size: 6

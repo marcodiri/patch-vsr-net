@@ -20,9 +20,7 @@ class CrossAttention(nn.Module):
     def __init__(self, in_channels, dim=32):
         super().__init__()
 
-        self.in_channels = in_channels
         self.scale = dim**-0.5
-        kv_in_channels = in_channels
 
         self.feat_net = nn.Sequential(
             *[
