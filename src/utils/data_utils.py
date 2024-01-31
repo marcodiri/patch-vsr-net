@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import torch
@@ -51,6 +52,24 @@ def parse_frame_title(filename: str):
     (hr_w, hr_h) = dim.split("x")
     frm, _ = frm_ext.split(".")
     return seq, (int(hr_w), int(hr_h)), int(frm)
+
+
+def extract_number_from_path(file_path):
+    """
+    Extracts the last set of digits from a given file path.
+
+    Parameters:
+    - file_path (str): The path of the file containing the desired number.
+
+    Returns:
+    - int or None: The extracted number if found, or None if no digits are found.
+    """
+    filename = os.path.basename(file_path)
+    parts = filename.split("_")
+    numbers = "".join(filter(str.isdigit, parts[-1]))
+    result = int(numbers) if numbers else None
+
+    return result
 
 
 def load_img(path):
