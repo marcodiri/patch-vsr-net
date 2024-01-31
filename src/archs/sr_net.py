@@ -12,7 +12,7 @@ class ResidualBlock(nn.Module):
 
         self.conv = nn.Sequential(
             nn.Conv2d(nf, nf, 3, 1, 1, bias=True),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Conv2d(nf, nf, 3, 1, 1, bias=True),
         )
 
@@ -43,7 +43,7 @@ class SRNet(BaseGenerator):
         # input conv.
         self.conv_in = nn.Sequential(
             nn.Conv2d(in_channels, nf, 3, 1, 1, bias=True),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
         )
 
         # residual blocks
@@ -52,14 +52,14 @@ class SRNet(BaseGenerator):
         # upsampling
         self.conv_up = nn.Sequential(
             nn.ConvTranspose2d(nf, nf, 3, 2, 1, output_padding=1, bias=True),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.ConvTranspose2d(nf, nf, 3, 2, 1, output_padding=1, bias=True),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
         )
 
         self.conv_up_cheap = nn.Sequential(
             nn.PixelShuffle(scale_factor),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
         )
 
         # output conv.
@@ -79,7 +79,6 @@ class SRNet(BaseGenerator):
             out += F.interpolate(
                 lr_curr, scale_factor=self.hparams.scale_factor, mode="bicubic"
             )
-
-        out = F.tanh(out)
+            out = F.tanh(out)
 
         return out
