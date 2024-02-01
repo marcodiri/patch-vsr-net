@@ -83,23 +83,3 @@ class VideoFolderDataModule(L.LightningDataModule):
             pin_memory=self.hparams.pin_memory,
         )
         return data_loader_predict
-
-
-if __name__ == "__main__":
-    dm = VideoFolderDataModule(
-        hr_path="/home/DATASETS/BVI_DVC/frames_HQ",
-        lr_path="/home/DATASETS/BVI_DVC/frames/frames_CRF_22",
-        extension="png",
-        tempo_extent=5,
-        hr_path_filter="1088",
-        lr_path_filter="1088",
-        patch_size=64,
-        dataset_upscale_factor=2,
-        train_pct=0.8,
-        batch_size=4,
-        pin_memory=False,
-    )
-    dm.setup("fit")
-    dl = dm.train_dataloader()
-    batch = next(iter(dl))
-    print()

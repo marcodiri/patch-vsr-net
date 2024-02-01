@@ -86,8 +86,12 @@ class VideoFolder(Dataset):
             hr_frms = []
 
             # read frames
-            window = self.tempo_extent // 2
-            for i in range(-window, window + 1):
+            if self.tempo_extent == 2:
+                window = range(-1, 1)
+            else:
+                mid = self.tempo_extent // 2
+                window = range(-mid, mid + 1)
+            for i in window:
                 cur_item = item + i * self.jump_frames
                 cur_target = (
                     self.hr.imgs[cur_item][1]
@@ -226,8 +230,12 @@ class VideoFolderPaired(Dataset):
             hr_frms, lr_frms = [], []
 
             # read frames
-            window = self.tempo_extent // 2
-            for i in range(-window, window + 1):
+            if self.tempo_extent == 2:
+                window = range(-1, 1)
+            else:
+                mid = self.tempo_extent // 2
+                window = range(-mid, mid + 1)
+            for i in window:
                 cur_item = item + i * self.jump_frames
                 cur_target = (
                     self.hr.imgs[cur_item][1]
@@ -313,8 +321,8 @@ if __name__ == "__main__":
         num_classes=50,
         patch_size=128,
         augment=True,
-        tempo_extent=7,
-        jump_frames=5,
+        tempo_extent=2,
+        jump_frames=1,
     )
     # ds = VideoFolderPaired(
     #     hr_path="/home/DATASETS/BVI_DVC/frames_HQ",
