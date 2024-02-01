@@ -1,30 +1,168 @@
 import os
 import random
+from typing import Dict, List, Tuple
 
 import torch
 import torchvision.transforms.v2 as v2
 from torch.nn.functional import interpolate
 from torch.utils.data import Dataset
+from torchvision.datasets import ImageFolder
 
-from utils.data_utils import (
-    get_pics_in_subfolder,
-    load_img,
-    parse_frame_title,
-    transform,
-)
+from utils.data_utils import transform
 
 
-class FolderDataset(Dataset):
+class ImageFolderWithFilter(ImageFolder):
+    def __init__(
+        self,
+        root: str,
+        class_filter: str,
+        num_classes=None,
+        **kwargs,
+    ):
+        assert num_classes is None or num_classes > 0
+        self.class_filter = class_filter
+        self.num_classes = num_classes
+        super().__init__(root, **kwargs)
+
+    def find_classes(self, directory: str) -> Tuple[List[str], Dict[str, int]]:
+        classes = sorted(
+            entry.name
+            for entry in os.scandir(directory)
+            if entry.is_dir() and self.class_filter in str(entry)
+        )
+        if not classes:
+            raise FileNotFoundError(f"Couldn't find any class folder in {directory}.")
+        if self.num_classes is not None:
+            classes = classes[: self.num_classes]
+
+        class_to_idx = {cls_name: i for i, cls_name in enumerate(classes)}
+        return classes, class_to_idx
+
+
+class VideoFolder(Dataset):
+    def __init__(
+        self,
+        hr_path,
+        *,
+        patch_size=None,
+        augment=False,
+        tempo_extent=None,
+        hr_path_filter="",
+        num_classes=None,
+        jump_frames=1,
+        **kwargs,
+    ):
+        self.hr_path = hr_path
+        self.patch_size = patch_size
+        self.augment_imgs = augment
+        self.tempo_extent = tempo_extent
+        self.hr_path_filter = hr_path_filter
+        self.num_classes = num_classes
+        self.jump_frames = jump_frames
+
+        self.hr = ImageFolderWithFilter(
+            hr_path,
+            hr_path_filter,
+            num_classes,
+            transform=transform,
+        )
+
+    def __len__(self):
+        return len(self.hr)
+
+    def __getitem__(self, item):
+        if self.tempo_extent is None:
+            hr_img = self.hr[item][0]
+
+            if self.patch_size is not None:
+                hr_img = self.crop(hr_img)
+            if self.augment_imgs:
+                hr_img = self.augment(hr_img)
+
+            return hr_img
+        else:
+            target = self.hr.imgs[item][1]
+
+            hr_frms = []
+
+            # read frames
+            if self.tempo_extent == 2:
+                window = range(-1, 1)
+            else:
+                mid = self.tempo_extent // 2
+                window = range(-mid, mid + 1)
+            for i in window:
+                cur_item = item + i * self.jump_frames
+                cur_target = (
+                    self.hr.imgs[cur_item][1]
+                    if cur_item < len(self) and cur_item >= 0
+                    else -1
+                )
+                if cur_target != target:
+                    cur_item = -1  # black frame
+                if cur_item != -1:
+                    cur_frm, cur_target = self.hr[cur_item]
+                    assert cur_target == target
+                else:
+                    cur_frm = torch.zeros_like(self.hr[item][0])
+                hr_frms.append(cur_frm)
+
+            hr_frms = torch.stack(hr_frms)  # t c h w
+
+            if self.patch_size is not None:
+                hr_frms = self.crop(hr_frms)
+            if self.augment_imgs:
+                hr_frms = self.augment(hr_frms)
+
+            return hr_frms
+
+    def crop(self, gt_frms):
+        gt_csz = self.patch_size
+
+        gt_h, gt_w = gt_frms.shape[-2:]
+        assert (gt_csz <= gt_h) and (
+            gt_csz <= gt_w
+        ), "the crop size is larger than the image size"
+
+        # crop lr
+        gt_top = random.randint(0, gt_h - gt_csz)
+        gt_left = random.randint(0, gt_w - gt_csz)
+
+        # crop gt
+        gt_top = gt_top
+        gt_left = gt_left
+        gt_pats = gt_frms[..., gt_top : gt_top + gt_csz, gt_left : gt_left + gt_csz]
+
+        return gt_pats
+
+    def augment(self, gt_pats):
+        # flip
+        axis = random.randint(1, 3)
+        if axis == 2:
+            gt_pats = v2.functional.vflip(gt_pats)
+        if axis == 3:
+            gt_pats = v2.functional.hflip(gt_pats)
+
+        # rotate
+        angle = (0.0, 90.0, 180.0, 270.0)[random.randint(0, 3)]
+        gt_pats = v2.functional.rotate(gt_pats, angle)
+
+        return gt_pats
+
+
+class VideoFolderPaired(Dataset):
     def __init__(
         self,
         hr_path,
         lr_path="",
-        extension="jpg",
         *,
-        patch_size,
-        tempo_extent=10,
+        patch_size=None,
+        augment=False,
+        tempo_extent=None,
         hr_path_filter="",
         lr_path_filter="",
+        num_classes=None,
+        jump_frames=1,
         dataset_upscale_factor=4,
         **kwargs,
     ):
@@ -32,106 +170,93 @@ class FolderDataset(Dataset):
         Custom dataset for the training phase. The getitem method will return a couple (x, y), where x is the
         LowQuality input and y is the relative groundtruth. The relationship between the LQ and HQ samples depends on
         how the dataset is built.
-
-        Args
-            hr_path (str):
-                base path of the hq dataset dir.
-            lr_path (str):
-                base path of the lq dataset dir. If empty the LR samples will be generated by downscaling
-                the groundtruth, thus the model will be NOT trained for performing the Artifact Reduction function.
-            extension (str, default="jpg"):
-                extension of images.
-            patch_size (int):
-                width/height of the training patch. the model is going to be trained on patches,
-                randomly extracted from the datasets.
-            tempo_extent (int, default=10):
-                frames window of a single dataset element.
-            hr_path_filter (str):
-                additional string to filter subfolders in the hr_path.
-            lr_path_filter (str):
-                additional string to filter subfolders in the lr_path.
-            dataset_upscale_factor (int, default=2):
-                resolution relationship between LQ and HQ samples. Must be known in advance: in our experiments,
-                we encoded the clips and halved their resolution, thus in our case upscale_factor is 2.
         """
 
         self.hr_path = hr_path
         self.lr_path = lr_path
-        self.extension = extension
         self.patch_size = patch_size
+        self.augment_imgs = augment
         self.tempo_extent = tempo_extent
         self.hr_path_filter = hr_path_filter
         self.lr_path_filter = lr_path_filter
+        self.num_classes = num_classes
+        self.jump_frames = jump_frames
         self.has_lowres = lr_path != ""
         self.upscale_factor = dataset_upscale_factor
 
-        self.hr_keys = sorted(
-            filter(
-                lambda p: str(hr_path_filter) in str(p),
-                get_pics_in_subfolder(hr_path, ext=extension),
-            )
+        self.hr = ImageFolderWithFilter(
+            hr_path,
+            hr_path_filter,
+            num_classes,
+            transform=transform,
         )
+
         if self.has_lowres:
-            self.lr_keys = sorted(
-                filter(
-                    lambda p: str(lr_path_filter) in str(p),
-                    get_pics_in_subfolder(lr_path, ext=extension),
-                )
+            self.lr = ImageFolderWithFilter(
+                lr_path,
+                lr_path_filter,
+                num_classes,
+                transform=transform,
             )
-            assert len(self.hr_keys) == len(
-                self.lr_keys
+            assert len(self.hr) == len(
+                self.lr
             ), "has_lowres is True but num of lr images does not correspond to hr images"
 
-            self.hr_lr_keys = list(zip(self.hr_keys, self.lr_keys))
-
-        self.size = len(self.hr_keys)
-
     def __len__(self):
-        return self.size
+        return len(self.hr)
 
     def __getitem__(self, item):
         if self.tempo_extent is None:
-            hr_img = transform(load_img(self.hr_keys[item]))
+            hr_img = self.hr[item][0]
 
             if self.has_lowres:
-                lr_img = transform(load_img(self.lr_keys[item]))
+                lr_img = self.lr[item][0]
             else:
                 lr_img = interpolate(
-                    hr_img,
+                    hr_img.unsqueeze(0),
                     scale_factor=1 / self.upscale_factor,
                     mode="bicubic",
-                )
+                ).squeeze(0)
 
-            hr_pat, lr_pat = self.crop(hr_img, lr_img)
-            hr_pat, lr_pat = self.augment(hr_pat, lr_pat)
+            if self.patch_size is not None:
+                hr_img, lr_img = self.crop(hr_img, lr_img)
+            if self.augment_imgs:
+                hr_img, lr_img = self.augment(hr_img, lr_img)
 
-            return hr_pat, lr_pat
+            return hr_img, lr_img
         else:
-            hr_key = self.hr_keys[item]
-
-            tot_frm = len(os.listdir(hr_key.parent))
-            seq_hr, (hr_w, hr_h), cur_frm = parse_frame_title(hr_key.name)
+            target = self.hr.imgs[item][1]
 
             hr_frms, lr_frms = [], []
 
             # read frames
-            for i in range(cur_frm, cur_frm + self.tempo_extent):
-                if i < tot_frm:
-                    frm_n = i
-                else:
-                    # reflect temporal paddding, e.g., (0,1,2) -> (0,1,2,1,0)
-                    frm_n = 2 * tot_frm - i
-                frm_key = "{}_{:03d}.{}".format(seq_hr, frm_n, self.extension)
-                hr_frms.append(
-                    transform(load_img(f"{self.hr_path}/{seq_hr}/{frm_key}"))
+            if self.tempo_extent == 2:
+                window = range(-1, 1)
+            else:
+                mid = self.tempo_extent // 2
+                window = range(-mid, mid + 1)
+            for i in window:
+                cur_item = item + i * self.jump_frames
+                cur_target = (
+                    self.hr.imgs[cur_item][1]
+                    if cur_item < len(self) and cur_item >= 0
+                    else -1
                 )
+                if cur_target != target:
+                    cur_item = -1  # black frame
+                if cur_item != -1:
+                    hr_frm, cur_target = self.hr[cur_item]
+                    assert cur_target == target
+                else:
+                    hr_frm = torch.zeros_like(self.hr[item][0])
+                hr_frms.append(hr_frm)
                 if self.has_lowres:
-                    lr_key = self.hr_lr_keys[item][1]
-                    seq_lr, (_, _), _ = parse_frame_title(lr_key.name)
-                    frm_key = "{}_{:03d}.{}".format(seq_lr, frm_n, self.extension)
-                    lr_frms.append(
-                        transform(load_img(f"{self.lr_path}/{seq_lr}/{frm_key}"))
-                    )
+                    if cur_item != -1:
+                        lr_frm, cur_target = self.lr[cur_item]
+                        assert cur_target == target
+                    else:
+                        lr_frm = torch.zeros_like(self.lr[item][0])
+                    lr_frms.append(lr_frm)
 
             hr_frms = torch.stack(hr_frms)  # t c h w
             if self.has_lowres:
@@ -143,10 +268,12 @@ class FolderDataset(Dataset):
                     mode="bicubic",
                 )
 
-            hr_pats, lr_pats = self.crop(hr_frms, lr_frms)
-            hr_pats, lr_pats = self.augment(hr_pats, lr_pats)
+            if self.patch_size is not None:
+                hr_frms, lr_frms = self.crop(hr_frms, lr_frms)
+            if self.augment_imgs:
+                hr_frms, lr_frms = self.augment(hr_frms, lr_frms)
 
-            return hr_pats, lr_pats
+            return hr_frms, lr_frms
 
     def crop(self, gt_frms, lr_frms):
         gt_csz = self.patch_size * self.upscale_factor
@@ -185,3 +312,30 @@ class FolderDataset(Dataset):
         lr_pats = v2.functional.rotate(lr_pats, angle)
 
         return gt_pats, lr_pats
+
+
+if __name__ == "__main__":
+    ds = VideoFolder(
+        # hr_path="/home/DATASETS/BVI_DVC/frames_HQ",
+        hr_path="../REDS/X4/test",
+        num_classes=50,
+        patch_size=128,
+        augment=True,
+        tempo_extent=2,
+        jump_frames=1,
+    )
+    # ds = VideoFolderPaired(
+    #     hr_path="/home/DATASETS/BVI_DVC/frames_HQ",
+    #     # hr_path="../REDS/X4/test",
+    #     lr_path="/home/DATASETS/BVI_DVC/frames/frames_CRF_22",
+    #     hr_path_filter="1088",
+    #     lr_path_filter="544",
+    #     dataset_upscale_factor=4,
+    #     num_classes=50,
+    #     patch_size=64,
+    #     augment=True,
+    #     tempo_extent=7,
+    #     jump_frames=5,
+    # )
+    el = ds[94]
+    print()

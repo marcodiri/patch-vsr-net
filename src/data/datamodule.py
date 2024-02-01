@@ -2,20 +2,22 @@ import lightning as L
 from lightning.pytorch.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from torch.utils.data import DataLoader, random_split
 
-from data.folder_dataset import FolderDataset
+from data.folder_dataset import VideoFolder, VideoFolderPaired
 
 
-class FolderDataModule(L.LightningDataModule):
+class VideoFolderDataModule(L.LightningDataModule):
     def __init__(
         self,
         hr_path,
         lr_path="",
-        extension="jpg",
         *,
-        patch_size,
+        patch_size=None,
+        augment=False,
         tempo_extent=None,
         hr_path_filter="",
         lr_path_filter="",
+        num_classes=None,
+        jump_frames=1,
         dataset_upscale_factor=4,
         train_pct=0.8,
         batch_size=32,
@@ -24,7 +26,7 @@ class FolderDataModule(L.LightningDataModule):
         """
         Custom PyTorch Lightning DataModule.
 
-        See :class:`~folder_dataset.FolferDataset` for details on args.
+        See :class:`~folder_dataset.VideoFolder` for details on args.
 
         Args
             train_pct (float):
@@ -38,13 +40,19 @@ class FolderDataModule(L.LightningDataModule):
 
     def setup(self, stage: str) -> None:
         if stage == "fit":
-            dataset = FolderDataset(**self.hparams)
+            dataset = VideoFolderPaired(**self.hparams)
             train_set_size = int(len(dataset) * self.hparams.train_pct)
             valid_set_size = len(dataset) - train_set_size
 
             # split the train set into two
             self.train_set, self.valid_set = random_split(
                 dataset, [train_set_size, valid_set_size]
+            )
+        if stage == "predict":
+            self.predict_set = VideoFolder(
+                self.hparams.hr_path,
+                tempo_extent=self.hparams.tempo_extent,
+                hr_path_filter=self.hparams.hr_path_filter,
             )
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
@@ -67,22 +75,11 @@ class FolderDataModule(L.LightningDataModule):
         )
         return data_loader_eval
 
-
-if __name__ == "__main__":
-    dm = FolderDataModule(
-        hr_path="/home/DATASETS/BVI_DVC/frames_HQ",
-        lr_path="/home/DATASETS/BVI_DVC/frames/frames_CRF_22",
-        extension="png",
-        tempo_extent=5,
-        hr_path_filter="1088",
-        lr_path_filter="1088",
-        patch_size=64,
-        dataset_upscale_factor=2,
-        train_pct=0.8,
-        batch_size=4,
-        pin_memory=False,
-    )
-    dm.setup("fit")
-    dl = dm.train_dataloader()
-    batch = next(iter(dl))
-    print()
+    def predict_dataloader(self) -> EVAL_DATALOADERS:
+        data_loader_predict = DataLoader(
+            dataset=self.predict_set,
+            num_workers=20,
+            shuffle=False,
+            pin_memory=self.hparams.pin_memory,
+        )
+        return data_loader_predict

@@ -30,16 +30,16 @@ trainer:
   reload_dataloaders_every_n_epochs: 0
 
 model:
-  class_path: models.align_net_module.AlignModule
+  class_path: models.align_only_module.AlignModule
   init_args:
     generator:
       class_path: archs.align_net.AlignNet
       init_args:
         in_channels: 3
         top_k: 1
-        block_size: 12
+        block_size: 16
         stride: 4
-    upscale_factor: &UPSCALE_FACTOR 2
+    upscale_factor: &UPSCALE_FACTOR 4
     gen_lr: 5e-4
     losses:
       pixel_crit:
@@ -48,11 +48,9 @@ model:
         reduction: mean
 
 data:
-  hr_path: /home/DATASETS/BVI_DVC/frames_HQ/
-  lr_path: /home/DATASETS/BVI_DVC/frames/frames_CRF_22
-  hr_path_filter: '1088'
-  lr_path_filter: '1088'
-  patch_size: 96
+  hr_path: /home/mdirienzo/REDS/X4/train
+  patch_size: 32
+  augment: true
   tempo_extent: 7
   train_pct: 0.8
   dataset_upscale_factor: *UPSCALE_FACTOR

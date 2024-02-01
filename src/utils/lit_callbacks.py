@@ -22,19 +22,14 @@ class ImageLog(Callback):
                     key="samples",
                     images=[
                         make_grid(
-                            torch.cat(outputs[0]),
-                            nrow=outputs[0][0].shape[0],
+                            torch.cat(outputs[i]),
+                            nrow=outputs[i][0].shape[0],
                             normalize=True,
                             scale_each=True,
-                        ),
-                        make_grid(
-                            torch.cat(outputs[1]),
-                            nrow=outputs[1][0].shape[0],
-                            normalize=True,
-                            scale_each=True,
-                        ),
+                        )
+                        for i in range(len(outputs) - 1)
                     ],
-                    caption=outputs[2],
+                    caption=outputs[-1],
                 )
             except Exception as e:
                 print(e)
