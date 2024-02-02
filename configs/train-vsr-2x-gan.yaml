@@ -14,7 +14,7 @@ trainer:
       project: patch-vsr-net
       log_model: True
       prefix: ''
-      group: '2x64@CRF22'
+      group: '2x96@CRF22'
   callbacks: ImageLog
   fast_dev_run: false
   max_epochs: 100
@@ -38,13 +38,18 @@ model:
         scale_factor: &UPSCALE_FACTOR 2
         residual: true
         align_net:
-          class_path: archs.align_net.AlignNet2
+          class_path: archs.align_net.AlignNet
           init_args:
             in_channels: 3
-            num_blocks: 16
+            top_k: 1
+            block_size: 16
+            stride: 8
     discriminator:
       class_path: archs.discriminator.spatial_discr.SpatialDiscriminator
+      init_args:
+        spatial_size: 192
     gen_lr: 5e-4
+    dis_lr: 5e-4
     losses:
       pixel_crit:
         type: CB
@@ -69,8 +74,8 @@ data:
   extension: png
   hr_path_filter: '1088'
   lr_path_filter: '1088'
-  patch_size: 64
-  tempo_extent: 3
+  patch_size: 96
+  tempo_extent: 5
   train_pct: 0.8
   dataset_upscale_factor: *UPSCALE_FACTOR
-  batch_size: 16
+  batch_size: 12

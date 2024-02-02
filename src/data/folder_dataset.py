@@ -28,7 +28,7 @@ class ImageFolderWithFilter(ImageFolder):
         classes = sorted(
             entry.name
             for entry in os.scandir(directory)
-            if entry.is_dir() and self.class_filter in str(entry)
+            if entry.is_dir() and str(self.class_filter) in str(entry)
         )
         if not classes:
             raise FileNotFoundError(f"Couldn't find any class folder in {directory}.")

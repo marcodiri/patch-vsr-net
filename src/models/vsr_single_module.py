@@ -48,7 +48,7 @@ class VSRSingle(L.LightningModule):
         n, t, c, lr_h, lr_w = lr_data.size()
         _, _, _, gt_h, gt_w = gt_data.size()
 
-        assert t > 1, "A temporal radius of at least 3 is needed"
+        assert t > 2, "A temporal radius of at least 3 is needed"
 
         to_log, to_log_prog = {}, {}
 
@@ -111,11 +111,23 @@ class VSRSingle(L.LightningModule):
         )
 
         return (
-            lr_data[:, t // 2],
-            align_res["aligned_patch"],
-            F.interpolate(
-                gt_data[:, t // 2],
-                scale_factor=1 / self.G.hparams.scale_factor,
-                mode="bicubic",
+            (
+                lr_data[:, t // 2],
+                align_res["aligned_patch"],
+                F.interpolate(
+                    gt_data[:, t // 2],
+                    size=lr_data.shape[-2:],
+                    mode="bicubic",
+                ),
             ),
-        ), (gt_data[:, t // 2], hr_fake)
+            (
+                gt_data[:, t // 2],
+                hr_fake,
+                F.interpolate(
+                    lr_data[:, t // 2],
+                    size=gt_data.shape[-2:],
+                    mode="bicubic",
+                ),
+            ),
+            ("lq vs aligned vs hq downscaled", "hq vs fake vs bicubic"),
+        )

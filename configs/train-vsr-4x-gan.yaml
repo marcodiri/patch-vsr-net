@@ -38,15 +38,18 @@ model:
         scale_factor: &UPSCALE_FACTOR 4
         residual: true
         align_net:
-          class_path: archs.align_net.AlignNet2
+          class_path: archs.align_net.AlignNet
           init_args:
             in_channels: 3
-            num_blocks: 16
+            top_k: 1
+            block_size: 16
+            stride: 8
     discriminator:
       class_path: archs.discriminator.spatial_discr.SpatialDiscriminator
       init_args:
         spatial_size: 384
     gen_lr: 5e-4
+    dis_lr: 5e-4
     losses:
       pixel_crit:
         type: CB
@@ -68,11 +71,11 @@ model:
 data:
   hr_path: /home/DATASETS/BVI_DVC/frames_HQ/
   lr_path: /home/DATASETS/BVI_DVC/frames/frames_CRF_22
-  extension: png
   hr_path_filter: '1088'
   lr_path_filter: '544'
   patch_size: 96
-  tempo_extent: 3
+  tempo_extent: 7
+  augment: true
   train_pct: 0.8
   dataset_upscale_factor: *UPSCALE_FACTOR
   batch_size: 8
