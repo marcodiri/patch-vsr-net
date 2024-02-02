@@ -41,6 +41,12 @@ parser.add_argument(
     default="png",
     help="Extension of frame images",
 )
+parser.add_argument(
+    "-o",
+    "--output",
+    type=str,
+    help="Output file",
+)
 
 args = parser.parse_args()
 
@@ -63,11 +69,17 @@ print("Calculating...")
 if "psnr" in args.metrics:
     psnr = calculate_psnr_video(seq1_list, seq2_list, 0)
     print(f"PSNR: {psnr}")
+    with open(args.output, "a") as f:
+        print(f"PSNR: {psnr}", file=f)
 
 if "ssim" in args.metrics:
     ssim = calculate_ssim_video(seq1_list, seq2_list, 0)
     print(f"SSIM: {ssim}")
+    with open(args.output, "a") as f:
+        print(f"SSIM: {ssim}", file=f)
 
 if "lpips" in args.metrics:
     lpips = calculate_lpips_video(seq1_list, seq2_list, "alex")
     print(f"LPIPS: {lpips}")
+    with open(args.output, "a") as f:
+        print(f"LPIPS: {lpips}", file=f)

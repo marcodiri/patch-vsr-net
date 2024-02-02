@@ -379,10 +379,10 @@ def _ssim_pth(img, img2):
     return ssim_map.mean([1, 2, 3])
 
 
-def calculate_lpips_video(seq1, seq2, net="vgg"):
+def calculate_lpips_video(seq1, seq2, net="alex"):
     lpips = LPIPS(net=net, version="0.1")
 
-    seq1_pt = torch.stack([data_utils.transform(frm) for frm in seq1[:2]])
-    seq2_pt = torch.stack([data_utils.transform(frm) for frm in seq2[:2]])
+    seq1_pt = torch.stack([data_utils.transform(frm) for frm in seq1])
+    seq2_pt = torch.stack([data_utils.transform(frm) for frm in seq2])
 
     return lpips(seq1_pt, seq2_pt).mean()
