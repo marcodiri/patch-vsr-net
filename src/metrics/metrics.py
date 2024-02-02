@@ -2,8 +2,10 @@ import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+from lpips import LPIPS
 
 from metrics.metrics_utils import reorder_image, to_y_channel
+from utils import data_utils
 from utils.color_utils import rgb2ycbcr_pt
 
 
@@ -375,3 +377,12 @@ def _ssim_pth(img, img2):
     cs_map = (2 * sigma12 + c2) / (sigma1_sq + sigma2_sq + c2)
     ssim_map = ((2 * mu1_mu2 + c1) / (mu1_sq + mu2_sq + c1)) * cs_map
     return ssim_map.mean([1, 2, 3])
+
+
+def calculate_lpips_video(seq1, seq2, net="vgg"):
+    lpips = LPIPS(net=net, version="0.1")
+
+    seq1_pt = torch.stack([data_utils.transform(frm) for frm in seq1[:2]])
+    seq2_pt = torch.stack([data_utils.transform(frm) for frm in seq2[:2]])
+
+    return lpips(seq1_pt, seq2_pt).mean()

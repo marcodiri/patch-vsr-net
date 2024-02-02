@@ -7,7 +7,11 @@ import torch
 import torch.nn.functional as F
 import torchvision
 
-from metrics.psnr_ssim import calculate_psnr_video, calculate_ssim_video
+from metrics.metrics import (
+    calculate_lpips_video,
+    calculate_psnr_video,
+    calculate_ssim_video,
+)
 from utils import data_utils
 
 parser = argparse.ArgumentParser()
@@ -54,6 +58,8 @@ for i in range(len(seq1_paths)):
         frame2 = data_utils.load_img(seq2_paths[i])
         seq2_list.append(np.array(frame2))
 
+print("Calculating...")
+
 if "psnr" in args.metrics:
     psnr = calculate_psnr_video(seq1_list, seq2_list, 0)
     print(f"PSNR: {psnr}")
@@ -61,3 +67,7 @@ if "psnr" in args.metrics:
 if "ssim" in args.metrics:
     ssim = calculate_ssim_video(seq1_list, seq2_list, 0)
     print(f"SSIM: {ssim}")
+
+if "lpips" in args.metrics:
+    lpips = calculate_lpips_video(seq1_list, seq2_list, "alex")
+    print(f"LPIPS: {lpips}")
