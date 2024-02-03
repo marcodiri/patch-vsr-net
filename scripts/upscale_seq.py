@@ -64,6 +64,13 @@ parser.add_argument(
     help="Downscale original sequenze by --scale before upscaling. Dafault: False",
 )
 parser.add_argument(
+    "-d",
+    "--device",
+    type=int,
+    default=0,
+    help="Device number to use for computations",
+)
+parser.add_argument(
     "-o",
     "--output_dir",
     type=str,
@@ -78,7 +85,7 @@ dm = VideoFolderDataModule(
     tempo_extent=args.tempo_extent,
 )
 
-checkpoint = torch.load(args.ckpt)
+checkpoint = torch.load(args.ckpt, map_location=f"cuda:{args.device}")
 
 aligner = AlignNet(
     in_channels=3,
@@ -99,10 +106,8 @@ state_dict = {
 model.load_state_dict(state_dict)
 
 model.freeze()
-trainer = Trainer(devices=[0])
+trainer = Trainer(devices=[args.device])
 pred = trainer.predict(model, dm)
-
-to_image = torchvision.transforms.ToPILImage()
 
 print("Saving upscaled sequence...")
 os.makedirs(f"./{args.output_dir}/fake/", exist_ok=True)
