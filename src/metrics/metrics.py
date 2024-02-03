@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from lpips import LPIPS
 
-from metrics.metrics_utils import reorder_image, to_y_channel
+from metrics.metrics_utils import center_corners_crop, reorder_image, to_y_channel
 from utils import data_utils
 from utils.color_utils import rgb2ycbcr_pt
 
@@ -110,8 +110,8 @@ def calculate_psnr_video(
 
     mse_list = []
     for i in range(len(seq1)):
-        img = seq1[i]
-        img2 = seq2[i]
+        img = np.array(seq1[i])
+        img2 = np.array(seq2[i])
 
         assert (
             img.shape == img2.shape
@@ -226,8 +226,8 @@ def calculate_ssim_video(
 
     ssim_list = []
     for i in range(len(seq1)):
-        img = seq1[i]
-        img2 = seq2[i]
+        img = np.array(seq1[i])
+        img2 = np.array(seq2[i])
 
         assert (
             img.shape == img2.shape
@@ -379,10 +379,52 @@ def _ssim_pth(img, img2):
     return ssim_map.mean([1, 2, 3])
 
 
-def calculate_lpips_video(seq1, seq2, net="alex"):
-    lpips = LPIPS(net=net, version="0.1")
+def calculate_lpips_video(seq1, seq2, net="alex", device="cpu"):
+    lpips = LPIPS(net=net, version="0.1").to(device)
 
     seq1_pt = torch.stack([data_utils.transform(frm) for frm in seq1])
     seq2_pt = torch.stack([data_utils.transform(frm) for frm in seq2])
 
     return lpips(seq1_pt, seq2_pt).mean()
+
+
+def calculate_arniqa_video(seq, device="cpu"):
+    import torchvision.transforms as transforms
+
+    model = torch.hub.load(
+        repo_or_dir="miccunifi/ARNIQA",
+        source="github",
+        model="ARNIQA",
+        regressor_dataset="kadid10k",
+    )
+    model.eval().to(device)
+
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+    )
+
+    score_list = []
+    for img in seq:
+        img = img.convert("RGB")
+        # Get the half-scale image
+        img_ds = transforms.Resize((img.size[1] // 2, img.size[0] // 2))(img)
+
+        img = center_corners_crop(img, crop_size=224)
+        img_ds = center_corners_crop(img_ds, crop_size=224)
+
+        # Preprocess the images
+        img = [transforms.ToTensor()(crop) for crop in img]
+        img = torch.stack(img, dim=0)
+        img = normalize(img).to(device)
+        img_ds = [transforms.ToTensor()(crop) for crop in img_ds]
+        img_ds = torch.stack(img_ds, dim=0)
+        img_ds = normalize(img_ds).to(device)
+
+        # Compute the quality score
+        with torch.no_grad(), torch.cuda.amp.autocast():
+            score = model(img, img_ds, return_embedding=False, scale_score=True)
+            # Compute the average score over the crops
+            score = score.mean(0)
+        score_list.append(score.cpu())
+
+    return np.array(score_list).mean()
