@@ -14,7 +14,7 @@ trainer:
       project: patch-vsr-net
       log_model: True
       prefix: ''
-      group: '4x96@CRF22'
+      group: '4x96@CRF30'
   callbacks: ImageLog
   fast_dev_run: false
   max_epochs: 100
@@ -50,7 +50,7 @@ model:
 
 data:
   hr_path: /home/DATASETS/BVI_DVC/frames_HQ/
-  lr_path: /home/DATASETS/BVI_DVC/frames/frames_CRF_22
+  lr_path: /home/DATASETS/BVI_DVC/frames/frames_CRF_30
   hr_path_filter: '1088'
   lr_path_filter: '544'
   patch_size: 96

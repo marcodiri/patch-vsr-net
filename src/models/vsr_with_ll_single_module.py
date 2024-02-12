@@ -143,3 +143,18 @@ class VSRSingle(L.LightningModule):
             ),
             ("lq vs aligned vs hq downscaled", "hq vs fake vs bicubic"),
         )
+
+    def predict_step(self, batch, batch_idx) -> torch.Any:
+        gt_data, lr_data = batch
+        n, t, c, lr_h, lr_w = lr_data.size()
+        _, _, _, gt_h, gt_w = gt_data.size()
+
+        lr_bic_data = F.interpolate(
+            gt_data.view(-1, c, gt_h, gt_w),
+            size=lr_data.shape[-2:],
+            mode="bicubic",
+        ).view(n, t, c, lr_h, lr_w)
+
+        hr_fake, align_res = self.G(lr_data, lr_bic_data=lr_bic_data)
+
+        return hr_fake, align_res
