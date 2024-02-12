@@ -17,18 +17,34 @@ class ImageFolderWithFilter(ImageFolder):
         root: str,
         class_filter: str,
         num_classes=None,
+        validation_classes=[],
+        train=True,
         **kwargs,
     ):
         assert num_classes is None or num_classes > 0
         self.class_filter = class_filter
         self.num_classes = num_classes
+        self.validation_classes = validation_classes
+        self.train = train
         super().__init__(root, **kwargs)
+
+    def is_in_validation(self, cls):
+        for val_cls in self.validation_classes:
+            if val_cls in cls.name:
+                return True
+        return False
 
     def find_classes(self, directory: str) -> Tuple[List[str], Dict[str, int]]:
         classes = sorted(
             entry.name
             for entry in os.scandir(directory)
-            if entry.is_dir() and str(self.class_filter) in str(entry)
+            if entry.is_dir()
+            and str(self.class_filter) in str(entry)
+            and (
+                not self.is_in_validation(entry)
+                if self.train
+                else self.is_in_validation(entry)
+            )
         )
         if not classes:
             raise FileNotFoundError(f"Couldn't find any class folder in {directory}.")
@@ -49,6 +65,8 @@ class VideoFolder(Dataset):
         tempo_extent=None,
         hr_path_filter="",
         num_classes=None,
+        validation_classes=[],
+        train=True,
         jump_frames=1,
         **kwargs,
     ):
@@ -58,12 +76,16 @@ class VideoFolder(Dataset):
         self.tempo_extent = tempo_extent
         self.hr_path_filter = hr_path_filter
         self.num_classes = num_classes
+        self.validation_classes = validation_classes
+        self.train = train
         self.jump_frames = jump_frames
 
         self.hr = ImageFolderWithFilter(
             hr_path,
             hr_path_filter,
             num_classes,
+            validation_classes,
+            train,
             transform=transform,
         )
 
@@ -162,6 +184,8 @@ class VideoFolderPaired(Dataset):
         hr_path_filter="",
         lr_path_filter="",
         num_classes=None,
+        validation_classes=[],
+        train=True,
         jump_frames=1,
         dataset_upscale_factor=4,
         **kwargs,
@@ -180,6 +204,8 @@ class VideoFolderPaired(Dataset):
         self.hr_path_filter = hr_path_filter
         self.lr_path_filter = lr_path_filter
         self.num_classes = num_classes
+        self.validation_classes = validation_classes
+        self.train = train
         self.jump_frames = jump_frames
         self.has_lowres = lr_path != ""
         self.upscale_factor = dataset_upscale_factor
@@ -188,6 +214,8 @@ class VideoFolderPaired(Dataset):
             hr_path,
             hr_path_filter,
             num_classes,
+            validation_classes,
+            train,
             transform=transform,
         )
 
@@ -196,6 +224,8 @@ class VideoFolderPaired(Dataset):
                 lr_path,
                 lr_path_filter,
                 num_classes,
+                validation_classes=validation_classes,
+                train=train,
                 transform=transform,
             )
             assert len(self.hr) == len(
@@ -315,27 +345,25 @@ class VideoFolderPaired(Dataset):
 
 
 if __name__ == "__main__":
-    ds = VideoFolder(
-        # hr_path="/home/DATASETS/BVI_DVC/frames_HQ",
-        hr_path="../REDS/X4/test",
-        num_classes=50,
-        patch_size=128,
+    ds = VideoFolderPaired(
+        hr_path="/home/DATASETS/BVI_DVC/frames_HQ",
+        # hr_path="../REDS/X4/test",
+        lr_path="/home/DATASETS/BVI_DVC/frames/frames_CRF_22",
+        hr_path_filter="1088",
+        lr_path_filter="544",
+        dataset_upscale_factor=4,
+        validation_classes=[
+            "AmericanFootballS3Harmonics",
+            "BasketballS3YonseiUniversity",
+            "CityStreetS7IRIS",
+            "SquareS2IRIS",
+            "StreetDancerS5IRIS",
+        ],
+        train=False,
+        patch_size=64,
         augment=True,
-        tempo_extent=2,
-        jump_frames=1,
+        tempo_extent=7,
+        jump_frames=5,
     )
-    # ds = VideoFolderPaired(
-    #     hr_path="/home/DATASETS/BVI_DVC/frames_HQ",
-    #     # hr_path="../REDS/X4/test",
-    #     lr_path="/home/DATASETS/BVI_DVC/frames/frames_CRF_22",
-    #     hr_path_filter="1088",
-    #     lr_path_filter="544",
-    #     dataset_upscale_factor=4,
-    #     num_classes=50,
-    #     patch_size=64,
-    #     augment=True,
-    #     tempo_extent=7,
-    #     jump_frames=5,
-    # )
     el = ds[94]
     print()

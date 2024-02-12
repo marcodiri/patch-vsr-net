@@ -1,3 +1,5 @@
+from typing import List
+
 import lightning as L
 from lightning.pytorch.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from torch.utils.data import DataLoader, random_split
@@ -17,9 +19,9 @@ class VideoFolderDataModule(L.LightningDataModule):
         hr_path_filter="",
         lr_path_filter="",
         num_classes=None,
+        validation_classes: List[str] = [],
         jump_frames=1,
         dataset_upscale_factor=4,
-        train_pct=0.8,
         batch_size=32,
         pin_memory=True,
     ):
@@ -40,14 +42,11 @@ class VideoFolderDataModule(L.LightningDataModule):
 
     def setup(self, stage: str) -> None:
         if stage == "fit":
-            dataset = VideoFolderPaired(**self.hparams)
-            train_set_size = int(len(dataset) * self.hparams.train_pct)
-            valid_set_size = len(dataset) - train_set_size
-
-            # split the train set into two
-            self.train_set, self.valid_set = random_split(
-                dataset, [train_set_size, valid_set_size]
-            )
+            self.train_set = VideoFolderPaired(**self.hparams, train=True)
+            if len(self.hparams.validation_classes) > 0:
+                self.valid_set = VideoFolderPaired(**self.hparams, train=False)
+            else:
+                self.valid_set = None
         if stage == "predict":
             self.predict_set = VideoFolder(
                 self.hparams.hr_path,
@@ -66,13 +65,15 @@ class VideoFolderDataModule(L.LightningDataModule):
         return data_loader
 
     def val_dataloader(self) -> EVAL_DATALOADERS:
-        data_loader_eval = DataLoader(
-            dataset=self.valid_set,
-            batch_size=self.hparams.batch_size,
-            num_workers=20,
-            shuffle=False,
-            pin_memory=self.hparams.pin_memory,
-        )
+        data_loader_eval = []
+        if self.valid_set is not None:
+            data_loader_eval = DataLoader(
+                dataset=self.valid_set,
+                batch_size=self.hparams.batch_size,
+                num_workers=20,
+                shuffle=False,
+                pin_memory=self.hparams.pin_memory,
+            )
         return data_loader_eval
 
     def predict_dataloader(self) -> EVAL_DATALOADERS:

@@ -64,9 +64,14 @@ data:
   lr_path: /home/DATASETS/BVI_DVC/frames/frames_CRF_30
   hr_path_filter: '1088'
   lr_path_filter: '544'
+  validation_classes:
+    - AmericanFootballS3Harmonics
+    - BasketballS3YonseiUniversity
+    - CityStreetS7IRIS
+    - SquareS2IRIS
+    - StreetDancerS5IRIS
   patch_size: 96
   tempo_extent: 7
   augment: true
-  train_pct: 0.8
   dataset_upscale_factor: *UPSCALE_FACTOR
   batch_size: 16
