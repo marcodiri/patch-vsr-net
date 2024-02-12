@@ -15,7 +15,14 @@ trainer:
       log_model: True
       prefix: ''
       group: '4x96@CRF30+LL'
-  callbacks: ImageLog
+  callbacks:
+    - class_path: ImageLog
+    - class_path: ModelCheckpoint
+      init_args:
+        save_top_k: 10
+        monitor: epoch
+        mode: max
+        every_n_epochs: 10
   fast_dev_run: false
   max_epochs: 100
   max_steps: -1
