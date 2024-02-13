@@ -71,7 +71,7 @@ class VideoFolderDataModule(L.LightningDataModule):
                 dataset=self.valid_set,
                 batch_size=self.hparams.batch_size,
                 num_workers=20,
-                shuffle=False,
+                shuffle=True,
                 pin_memory=self.hparams.pin_memory,
             )
         return data_loader_eval

@@ -91,6 +91,7 @@ class AlignNet(BaseGenerator):
 
             # get top k for each block (row)
             _, topk_idx = torch.topk(sim, k=self.hparams.top_k, dim=-1)
+            # topk_idx = topk_idx[:, :, -1:]
 
             topk_blocks_i = blocks_t_mp[:, i][
                 torch.arange(b)[:, None, None], topk_idx

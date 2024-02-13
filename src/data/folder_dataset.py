@@ -30,7 +30,7 @@ class ImageFolderWithFilter(ImageFolder):
 
     def is_in_validation(self, cls):
         for val_cls in self.validation_classes:
-            if val_cls in cls.name:
+            if val_cls in cls:
                 return True
         return False
 
@@ -39,11 +39,11 @@ class ImageFolderWithFilter(ImageFolder):
             entry.name
             for entry in os.scandir(directory)
             if entry.is_dir()
-            and str(self.class_filter) in str(entry)
+            and str(self.class_filter) in str(entry.name)
             and (
-                not self.is_in_validation(entry)
+                not self.is_in_validation(entry.name)
                 if self.train
-                else self.is_in_validation(entry)
+                else self.is_in_validation(entry.name)
             )
         )
         if not classes:
