@@ -35,24 +35,32 @@ class AlignNet(BaseGenerator):
 
         self.resnet = ResNet()
 
-    def forward(self, lr_data, **kwargs):
+    def forward(self, lr_data, frm_idx=None, **kwargs):
         b, t, c, lr_h, lr_w = lr_data.shape
-        current_idx = t // 2
+        current_idx = t // 2 if frm_idx is None else frm_idx
+        assert current_idx >= 0
+
         frame_t = lr_data[:, current_idx]
 
         if "lr_bic_data" in kwargs:
-            frame_t_mp = torch.cat(
-                [
-                    kwargs["lr_bic_data"][:, :current_idx],
-                    kwargs["lr_bic_data"][:, current_idx + 1 :],
-                ],
-                dim=1,
-            )
+            if current_idx == t - 1:
+                frame_t_mp = kwargs["lr_bic_data"][:, :current_idx].contiguous()
+            else:
+                frame_t_mp = torch.cat(
+                    [
+                        kwargs["lr_bic_data"][:, :current_idx],
+                        kwargs["lr_bic_data"][:, current_idx + 1 :],
+                    ],
+                    dim=1,
+                )
         else:
-            frame_t_mp = torch.cat(
-                [lr_data[:, :current_idx], lr_data[:, current_idx + 1 :]],
-                dim=1,
-            )
+            if current_idx == t - 1:
+                frame_t_mp = lr_data[:, :current_idx].contiguous()
+            else:
+                frame_t_mp = torch.cat(
+                    [lr_data[:, :current_idx], lr_data[:, current_idx + 1 :]],
+                    dim=1,
+                )
 
         kernel_size_t = self.hparams.block_size
         stride_t = kernel_size_t
